@@ -45,6 +45,9 @@ class TrackerListWidget : public TrackerListView
     Q_DISABLE_COPY_MOVE(TrackerListWidget)
 
 public:
+#ifdef QBT_REMOTE_CLIENT
+    explicit TrackerListWidget(QWidget *parent = nullptr);
+#else
     explicit TrackerListWidget(QWidget *parent = nullptr);
     ~TrackerListWidget() override;
 
@@ -71,4 +74,5 @@ private:
     void displayColumnHeaderMenu();
 
     TrackerListModel *m_model;
+#endif
 };

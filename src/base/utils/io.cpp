@@ -75,59 +75,6 @@ Utils::IO::FileDeviceOutputIterator &Utils::IO::FileDeviceOutputIterator::operat
     return *this;
 }
 
-nonstd::expected<QByteArray, Utils::IO::ReadError> Utils::IO::readFile(const Path &path, const qint64 maxSize, const QIODevice::OpenMode additionalMode)
-{
-    QFile file {path.data()};
-    if (!file.open(QIODevice::ReadOnly | additionalMode))
-    {
-        const QString message = QCoreApplication::translate("Utils::IO", "File open error. File: \"%1\". Error: \"%2\"")
-            .arg(file.fileName(), file.errorString());
-        return nonstd::make_unexpected(ReadError {ReadError::NotExist, message});
-    }
-
-    const qint64 fileSize = file.size();
-    if ((maxSize >= 0) && (fileSize > maxSize))
-    {
-        const QString message = QCoreApplication::translate("Utils::IO", "File size exceeds limit. File: \"%1\". File size: %2. Size limit: %3")
-            .arg(file.fileName(), QString::number(fileSize), QString::number(maxSize));
-        return nonstd::make_unexpected(ReadError {ReadError::ExceedSize, message});
-    }
-    if (!std::in_range<qsizetype>(fileSize))
-    {
-        const QString message = QCoreApplication::translate("Utils::IO", "File size exceeds data size limit. File: \"%1\". File size: %2. Array limit: %3")
-            .arg(file.fileName(), QString::number(fileSize), QString::number(std::numeric_limits<qsizetype>::max()));
-        return nonstd::make_unexpected(ReadError {ReadError::ExceedSize, message});
-    }
-
-    QByteArray ret {static_cast<qsizetype>(fileSize), Qt::Uninitialized};
-    const qint64 actualSize = file.read(ret.data(), fileSize);
-
-    if (actualSize < 0)
-    {
-        const QString message = QCoreApplication::translate("Utils::IO", "File read error. File: \"%1\". Error: \"%2\"")
-            .arg(file.fileName(), file.errorString());
-        return nonstd::make_unexpected(ReadError {ReadError::Failed, message});
-    }
-
-    if (actualSize < fileSize)
-    {
-        // `QIODevice::Text` will convert CRLF to LF on-the-fly and affects return value
-        // of `qint64 QIODevice::read(char *data, qint64 maxSize)`
-        if (additionalMode.testFlag(QIODevice::Text))
-        {
-            ret.truncate(actualSize);
-        }
-        else
-        {
-            const QString message = QCoreApplication::translate("Utils::IO", "Read size mismatch. File: \"%1\". Expected: %2. Actual: %3")
-                .arg(file.fileName(), QString::number(fileSize), QString::number(actualSize));
-            return nonstd::make_unexpected(ReadError {ReadError::SizeMismatch, message});
-        }
-    }
-
-    return ret;
-}
-
 nonstd::expected<void, QString> Utils::IO::saveToFile(const Path &path, const QByteArray &data)
 {
     if (const Path parentPath = path.parentPath(); !parentPath.isEmpty())

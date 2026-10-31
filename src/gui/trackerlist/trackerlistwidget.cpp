@@ -29,6 +29,8 @@
 
 #include "trackerlistwidget.h"
 
+#ifndef QBT_REMOTE_CLIENT
+
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
@@ -462,3 +464,7 @@ void TrackerListWidget::wheelEvent(QWheelEvent *event)
 
     QTreeView::wheelEvent(event);  // event delegated to base class
 }
+
+#else
+TrackerListWidget::TrackerListWidget(QWidget *parent) : TrackerListView(parent) {}
+#endif

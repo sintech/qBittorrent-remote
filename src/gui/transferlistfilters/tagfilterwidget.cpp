@@ -29,6 +29,9 @@
 
 #include "tagfilterwidget.h"
 
+#include "gui/utils.h"
+#ifndef QBT_REMOTE_CLIENT
+
 #include <QMenu>
 #include <QMessageBox>
 
@@ -61,20 +64,7 @@ TagFilterWidget::TagFilterWidget(QWidget *parent)
     proxyModel->setSortCaseSensitivity(Qt::CaseInsensitive);
     proxyModel->setSourceModel(new TagFilterModel(this));
     setModel(proxyModel);
-    setFrameShape(QFrame::NoFrame);
-    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    setUniformRowHeights(true);
-    setHeaderHidden(true);
-    setIconSize(Utils::Gui::smallIconSize());
-#if defined(Q_OS_MACOS)
-    setAttribute(Qt::WA_MacShowFocusRect, false);
-#endif
-    setIndentation(0);
-    setContextMenuPolicy(Qt::CustomContextMenu);
-    sortByColumn(0, Qt::AscendingOrder);
-    setCurrentIndex(model()->index(0, 0));
+    configureView();
 
     connect(this, &TagFilterWidget::collapsed, this, &TagFilterWidget::callUpdateGeometry);
     connect(this, &TagFilterWidget::expanded, this, &TagFilterWidget::callUpdateGeometry);
@@ -125,35 +115,6 @@ void TagFilterWidget::showMenu()
         , this, &TagFilterWidget::actionDeleteTorrentsTriggered);
 
     menu->popup(QCursor::pos());
-}
-
-void TagFilterWidget::callUpdateGeometry()
-{
-    updateGeometry();
-}
-
-QSize TagFilterWidget::sizeHint() const
-{
-    return
-    {
-        // Width should be exactly the width of the content
-        sizeHintForColumn(0),
-        // Height should be exactly the height of the content
-        static_cast<int>(sizeHintForRow(0) * (model()->rowCount() + 0.5)),
-    };
-}
-
-QSize TagFilterWidget::minimumSizeHint() const
-{
-    QSize size = sizeHint();
-    size.setWidth(6);
-    return size;
-}
-
-void TagFilterWidget::rowsInserted(const QModelIndex &parent, int start, int end)
-{
-    QTreeView::rowsInserted(parent, start, end);
-    updateGeometry();
 }
 
 Tag TagFilterWidget::askTagName()
@@ -210,5 +171,64 @@ void TagFilterWidget::removeUnusedTags()
     for (const Tag &tag : asConst(session->tags()))
         if (model()->data(static_cast<TagFilterProxyModel *>(model())->index(tag), Qt::UserRole) == 0)
             session->removeTag(tag);
+    updateGeometry();
+}
+
+#endif
+
+void TagFilterWidget::configureView()
+{
+    setFrameShape(QFrame::NoFrame);
+    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    setUniformRowHeights(true);
+    setHeaderHidden(true);
+    setIconSize(Utils::Gui::smallIconSize());
+#if defined(Q_OS_MACOS)
+    setAttribute(Qt::WA_MacShowFocusRect, false);
+#endif
+    setIndentation(0);
+    setContextMenuPolicy(Qt::CustomContextMenu);
+    sortByColumn(0, Qt::AscendingOrder);
+    setCurrentIndex(model()->index(0, 0));
+}
+
+TagFilterWidget::TagFilterWidget(QWidget *parent, QAbstractItemModel *model)
+    : QTreeView(parent)
+{
+    setModel(model);
+    configureView();
+    connect(model, &QAbstractItemModel::modelReset, this, [this] { updateGeometry(); });
+    connect(this, &QTreeView::collapsed, this, [this] { updateGeometry(); });
+    connect(this, &QTreeView::expanded, this, [this] { updateGeometry(); });
+}
+
+void TagFilterWidget::callUpdateGeometry()
+{
+    updateGeometry();
+}
+
+QSize TagFilterWidget::sizeHint() const
+{
+    return
+    {
+        // Width should be exactly the width of the content
+        sizeHintForColumn(0),
+        // Height should be exactly the height of the content
+        static_cast<int>(sizeHintForRow(0) * (model()->rowCount() + 0.5)),
+    };
+}
+
+QSize TagFilterWidget::minimumSizeHint() const
+{
+    QSize size = sizeHint();
+    size.setWidth(6);
+    return size;
+}
+
+void TagFilterWidget::rowsInserted(const QModelIndex &parent, int start, int end)
+{
+    QTreeView::rowsInserted(parent, start, end);
     updateGeometry();
 }

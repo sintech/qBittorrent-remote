@@ -52,65 +52,6 @@
 #include "base/unicodestrings.h"
 #include "base/utils/string.h"
 
-namespace
-{
-    // return best userfriendly storage unit (B, KiB, MiB, GiB, TiB, ...)
-    // use Binary prefix standards from IEC 60027-2
-    // see http://en.wikipedia.org/wiki/Kilobyte
-    // value must be given in bytes
-    // to send numbers instead of strings with suffixes
-    struct SplitToFriendlyUnitResult
-    {
-        qreal value;
-        Utils::Misc::SizeUnit unit;
-    };
-
-    std::optional<SplitToFriendlyUnitResult> splitToFriendlyUnit(const qint64 bytes, const int unitThreshold = 1024)
-    {
-        if (bytes < 0)
-            return std::nullopt;
-
-        int i = 0;
-        auto value = static_cast<qreal>(bytes);
-
-        while ((value >= unitThreshold) && (i < static_cast<int>(Utils::Misc::SizeUnit::ExbiByte)))
-        {
-            value /= 1024;
-            ++i;
-        }
-        return {{value, static_cast<Utils::Misc::SizeUnit>(i)}};
-    }
-}
-
-QString Utils::Misc::friendlyUnit(const qint64 bytes, const bool isSpeed, const int precision)
-{
-    const std::optional<SplitToFriendlyUnitResult> result = splitToFriendlyUnit(bytes);
-    if (!result)
-        return QCoreApplication::translate("misc", "Unknown", "Unknown (size)");
-
-    const int digitPrecision = (precision >= 0) ? precision : friendlyUnitPrecision(result->unit);
-    return Utils::String::fromDouble(result->value, digitPrecision)
-           + QChar::Nbsp + unitString(result->unit, isSpeed);
-}
-
-QString Utils::Misc::friendlyUnitCompact(const qint64 bytes)
-{
-    // avoid 1000-1023 values, use next larger unit instead
-    const std::optional<SplitToFriendlyUnitResult> result = splitToFriendlyUnit(bytes, 1000);
-    if (!result)
-        return QCoreApplication::translate("misc", "Unknown", "Unknown (size)");
-
-    int precision = 0;          // >= 100
-    if (result->value < 10)
-        precision = 2;          // 0 - 9.99
-    else if (result->value < 100)
-        precision = 1;          // 10 - 99.9
-
-    return Utils::String::fromDouble(result->value, precision)
-           // use only one character for unit representation
-           + QChar::Nbsp + unitString(result->unit, false)[0];
-}
-
 bool Utils::Misc::isPreviewable(const Path &filePath)
 {
     const QString mime = QMimeDatabase().mimeTypeForFile(filePath.data(), QMimeDatabase::MatchExtension).name();

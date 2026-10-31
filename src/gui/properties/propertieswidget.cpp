@@ -42,6 +42,11 @@
 #include <QStackedWidget>
 #include <QUrl>
 
+#include "base/global.h"
+#include "gui/uithememanager.h"
+#include "gui/lineedit.h"
+#include "gui/trackerlist/trackerlistwidget.h"
+#ifndef QBT_REMOTE_CLIENT
 #include "base/bittorrent/infohash.h"
 #include "base/bittorrent/session.h"
 #include "base/bittorrent/torrent.h"
@@ -58,6 +63,7 @@
 #include "gui/uithememanager.h"
 #include "gui/utils.h"
 #include "gui/utils/keysequence.h"
+#endif
 #include "downloadedpiecesbar.h"
 #include "peerlistwidget.h"
 #include "pieceavailabilitybar.h"
@@ -68,8 +74,11 @@
 PropertiesWidget::PropertiesWidget(QWidget *parent)
     : QWidget(parent)
     , m_ui {new Ui::PropertiesWidget}
+#ifndef QBT_REMOTE_CLIENT
     , m_storeFilterPatternFormat {u"GUI/PropertiesWidget/FilterPatternFormat"_s}
+#endif
 {
+    UIThemeManager::initInstance();
     m_ui->setupUi(this);
 #ifndef Q_OS_MACOS
     setAutoFillBackground(true);
@@ -82,9 +91,12 @@ PropertiesWidget::PropertiesWidget(QWidget *parent)
     m_contentFilterLine->setPlaceholderText(tr("Filter files..."));
     m_contentFilterLine->setFixedWidth(300);
     m_contentFilterLine->setContextMenuPolicy(Qt::CustomContextMenu);
+#ifndef QBT_REMOTE_CLIENT
     connect(m_contentFilterLine, &QWidget::customContextMenuRequested, this, &PropertiesWidget::showContentFilterContextMenu);
     connect(m_contentFilterLine, &LineEdit::textUpdated, this, &PropertiesWidget::setContentFilterPattern);
+#endif
     m_ui->contentFilterLayout->insertWidget(3, m_contentFilterLine);
+#ifndef QBT_REMOTE_CLIENT
 
     m_ui->filesList->setContentDragAllowed(true);
     m_ui->filesList->setDoubleClickAction(TorrentContentWidget::DoubleClickAction::Open);
@@ -99,6 +111,7 @@ PropertiesWidget::PropertiesWidget(QWidget *parent)
     connect(BitTorrent::Session::instance(), &BitTorrent::Session::torrentMetadataReceived, this, &PropertiesWidget::updateTorrentInfos);
     connect(m_ui->filesList, &TorrentContentWidget::stateChanged, this, &PropertiesWidget::saveSettings);
 
+#endif
     // set bar height relative to screen dpi
     const int barHeight = 18;
 
@@ -118,12 +131,19 @@ PropertiesWidget::PropertiesWidget(QWidget *parent)
 
     // Tracker list
     m_trackerList = new TrackerListWidget(this);
+#ifndef QBT_REMOTE_CLIENT
     m_ui->trackerUpButton->setIcon(UIThemeManager::instance()->getIcon(u"go-up"_s));
     m_ui->trackerUpButton->setIconSize(Utils::Gui::smallIconSize());
     m_ui->trackerDownButton->setIcon(UIThemeManager::instance()->getIcon(u"go-down"_s));
     m_ui->trackerDownButton->setIconSize(Utils::Gui::smallIconSize());
     connect(m_ui->trackerUpButton, &QPushButton::clicked, m_trackerList, &TrackerListWidget::decreaseSelectedTrackerTiers);
     connect(m_ui->trackerDownButton, &QPushButton::clicked, m_trackerList, &TrackerListWidget::increaseSelectedTrackerTiers);
+#else
+    m_ui->trackerUpButton->setIcon(UIThemeManager::instance()->getIcon(u"go-up"_s));
+    m_ui->trackerDownButton->setIcon(UIThemeManager::instance()->getIcon(u"go-down"_s));
+    m_ui->trackerUpButton->setEnabled(false);
+    m_ui->trackerDownButton->setEnabled(false);
+#endif
     m_ui->hBoxLayoutTrackers->insertWidget(0, m_trackerList);
     // Peers list
     m_peerList = new PeerListWidget(this);
@@ -133,6 +153,7 @@ PropertiesWidget::PropertiesWidget(QWidget *parent)
     m_tabBar->setContentsMargins(0, 5, 0, 5);
     m_ui->verticalLayout->addLayout(m_tabBar);
     connect(m_tabBar, &PropTabBar::tabChanged, m_ui->stackedProperties, &QStackedWidget::setCurrentIndex);
+#ifndef QBT_REMOTE_CLIENT
     connect(m_tabBar, &PropTabBar::tabChanged, this, &PropertiesWidget::saveSettings);
     connect(m_tabBar, &PropTabBar::visibilityToggled, this, &PropertiesWidget::setVisibility);
     connect(m_tabBar, &PropTabBar::visibilityToggled, this, &PropertiesWidget::saveSettings);
@@ -145,6 +166,11 @@ PropertiesWidget::PropertiesWidget(QWidget *parent)
 
     configure();
     connect(Preferences::instance(), &Preferences::changed, this, &PropertiesWidget::configure);
+#else
+    connect(m_tabBar, &PropTabBar::visibilityToggled, m_ui->stackedProperties, &QWidget::setVisible);
+    m_speedWidget = new SpeedWidget(static_cast<QWidget *>(this));
+    m_ui->speedLayout->addWidget(m_speedWidget);
+#endif
 }
 
 PropertiesWidget::~PropertiesWidget()
@@ -153,6 +179,7 @@ PropertiesWidget::~PropertiesWidget()
     delete m_ui;
 }
 
+#ifndef QBT_REMOTE_CLIENT
 void PropertiesWidget::showPiecesAvailability(bool show)
 {
     m_ui->labelPiecesAvailability->setVisible(show);
@@ -686,3 +713,5 @@ void PropertiesWidget::editWebSeed()
     m_torrent->addUrlSeeds({newSeed});
     loadUrlSeeds();
 }
+
+#endif

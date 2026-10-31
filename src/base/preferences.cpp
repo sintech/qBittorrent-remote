@@ -28,6 +28,7 @@
  */
 
 #include "preferences.h"
+#include "uidefaults.h"
 
 #include <algorithm>
 #include <chrono>
@@ -400,7 +401,7 @@ void Preferences::setStatusbarDisplayed(const bool displayed)
 
 bool Preferences::isStatusbarFreeDiskSpaceDisplayed() const
 {
-    return value(u"Preferences/General/StatusbarFreeDiskSpaceDisplayed"_s, false);
+    return value(u"Preferences/General/StatusbarFreeDiskSpaceDisplayed"_s, Defaults::GUI::ShowFreeDiskSpace);
 }
 
 void Preferences::setStatusbarFreeDiskSpaceDisplayed(const bool displayed)
@@ -498,11 +499,7 @@ void Preferences::setWinStartup(const bool b)
 
 QString Preferences::getStyle() const
 {
-#ifdef Q_OS_WIN
-    const QString defaultStyleName = u"Fusion"_s;
-#else
-    const QString defaultStyleName = u"system"_s;
-#endif
+    const QString defaultStyleName = Defaults::GUI::styleName();
     const auto styleName = value<QString>(u"Appearance/Style"_s);
     return styleName.isEmpty() ? defaultStyleName : styleName;
 }

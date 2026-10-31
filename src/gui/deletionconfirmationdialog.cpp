@@ -28,12 +28,16 @@
  */
 
 #include "deletionconfirmationdialog.h"
+#include "ui_deletionconfirmationdialog.h"
 
 #include <QPushButton>
 
-#include "base/bittorrent/session.h"
+#ifndef QBT_REMOTE_CLIENT
 #include "base/global.h"
 #include "base/preferences.h"
+#endif
+#include <QSettings>
+#include "base/global.h"
 #include "uithememanager.h"
 #include "utils.h"
 
@@ -55,7 +59,12 @@ DeletionConfirmationDialog::DeletionConfirmationDialog(QWidget *parent, const in
     m_ui->rememberBtn->setIcon(UIThemeManager::instance()->getIcon(u"object-locked"_s));
     m_ui->rememberBtn->setIconSize(Utils::Gui::mediumIconSize());
 
-    m_ui->checkRemoveContent->setChecked(defaultDeleteFiles || Preferences::instance()->removeTorrentContent());
+#ifndef QBT_REMOTE_CLIENT
+    const bool removeContent = Preferences::instance()->removeTorrentContent();
+#else
+    const bool removeContent = false;
+#endif
+    m_ui->checkRemoveContent->setChecked(defaultDeleteFiles || removeContent);
     connect(m_ui->checkRemoveContent, &QCheckBox::clicked, this, &DeletionConfirmationDialog::updateRememberButtonState);
     m_ui->buttonBox->button(QDialogButtonBox::Ok)->setText(tr("Remove"));
     m_ui->buttonBox->button(QDialogButtonBox::Cancel)->setFocus();
@@ -76,11 +85,17 @@ bool DeletionConfirmationDialog::isRemoveContentSelected() const
 
 void DeletionConfirmationDialog::updateRememberButtonState()
 {
+#ifndef QBT_REMOTE_CLIENT
     m_ui->rememberBtn->setEnabled(m_ui->checkRemoveContent->isChecked() != Preferences::instance()->removeTorrentContent());
+#else
+    m_ui->rememberBtn->setEnabled(false);
+#endif
 }
 
 void DeletionConfirmationDialog::on_rememberBtn_clicked()
 {
+#ifndef QBT_REMOTE_CLIENT
     Preferences::instance()->setRemoveTorrentContent(m_ui->checkRemoveContent->isChecked());
+#endif
     m_ui->rememberBtn->setEnabled(false);
 }

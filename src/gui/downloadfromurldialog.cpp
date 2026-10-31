@@ -39,6 +39,8 @@
 #include <QStringView>
 
 #include "base/net/downloadmanager.h"
+#include <QSettings>
+#include "base/global.h"
 #include "ui_downloadfromurldialog.h"
 #include "utils.h"
 
@@ -61,7 +63,9 @@ namespace
 DownloadFromURLDialog::DownloadFromURLDialog(QWidget *parent)
     : QDialog(parent)
     , m_ui(new Ui::DownloadFromURLDialog)
+#ifndef QBT_REMOTE_CLIENT
     , m_storeDialogSize(SETTINGS_KEY(u"Size"_s))
+#endif
 {
     m_ui->setupUi(this);
 
@@ -97,13 +101,22 @@ DownloadFromURLDialog::DownloadFromURLDialog(QWidget *parent)
         m_ui->buttonBox->setFocus();
     }
 
-    if (const QSize dialogSize = m_storeDialogSize; dialogSize.isValid())
+#ifndef QBT_REMOTE_CLIENT
+    const QSize dialogSize = m_storeDialogSize;
+#else
+    const QSize dialogSize = QSettings().value(u"remote/urlDialogSize"_s).toSize();
+#endif
+    if (dialogSize.isValid())
         resize(dialogSize);
 }
 
 DownloadFromURLDialog::~DownloadFromURLDialog()
 {
+#ifndef QBT_REMOTE_CLIENT
     m_storeDialogSize = size();
+#else
+    QSettings().setValue(u"remote/urlDialogSize"_s, size());
+#endif
     delete m_ui;
 }
 

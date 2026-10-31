@@ -34,7 +34,9 @@
 #include <QtContainerFwd>
 #include <QTreeView>
 
+#ifndef QBT_REMOTE_CLIENT
 #include "base/bittorrent/infohash.h"
+#endif
 #include "guiapplicationcomponent.h"
 #include "transferlistmodel.h"
 
@@ -58,6 +60,13 @@ class TransferListWidget final : public GUIApplicationComponent<QTreeView>
     Q_DISABLE_COPY_MOVE(TransferListWidget)
 
 public:
+    enum class Command { Start, Stop, ForceStart, Remove, Recheck, Reannounce, QueueUp, QueueDown, QueueTop, QueueBottom };
+    static QAction *createAction(Command command, QObject *parent);
+    void displayColumnHeaderMenu();
+    int visibleColumnsCount() const;
+    TransferListWidget(QAbstractItemModel *model, QWidget *parent);
+    void configureView(bool columnLoaded);
+#ifndef QBT_REMOTE_CLIENT
     TransferListWidget(IGUIApplication *app, QWidget *parent);
     ~TransferListWidget() override;
     TransferListModel *getSourceModel() const;
@@ -111,7 +120,6 @@ signals:
 private slots:
     void torrentDoubleClicked();
     void displayListMenu();
-    void displayColumnHeaderMenu();
     void currentChanged(const QModelIndex &current, const QModelIndex &previous) override;
     void setSelectedTorrentsSuperSeeding(bool enabled) const;
     void setSelectedTorrentsSequentialDownload(bool enabled) const;
@@ -138,8 +146,8 @@ private:
     TagSet askTagsForSelection(const QString &dialogTitle);
     void applyToSelectedTorrents(const std::function<void (BitTorrent::Torrent *const)> &fn);
     QList<BitTorrent::Torrent *> getVisibleTorrents() const;
-    int visibleColumnsCount() const;
 
     TransferListModel *m_listModel = nullptr;
     TransferListSortModel *m_sortFilterModel = nullptr;
+#endif
 };

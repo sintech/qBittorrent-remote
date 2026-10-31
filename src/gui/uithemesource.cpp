@@ -34,8 +34,14 @@
 #include <QJsonObject>
 
 #include "base/global.h"
+#ifndef QBT_REMOTE_CLIENT
 #include "base/logger.h"
 #include "base/profile.h"
+#else
+#include <QDebug>
+#include <QStandardPaths>
+#define LogMsg(message, ...) qWarning().noquote() << message
+#endif
 #include "base/utils/io.h"
 
 namespace
@@ -101,7 +107,11 @@ namespace
 
 DefaultThemeSource::DefaultThemeSource()
     : m_defaultPath {u":"_s}
+#ifndef QBT_REMOTE_CLIENT
     , m_userPath {specialFolderLocation(SpecialFolder::Config) / Path(u"themes/default"_s)}
+#else
+    , m_userPath {Path(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation)) / Path(u"themes/default"_s)}
+#endif
     , m_colors {defaultUIThemeColors()}
 {
     loadColors();

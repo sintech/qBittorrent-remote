@@ -75,6 +75,9 @@ public:
         COL_COUNT
     };
 
+#ifdef QBT_REMOTE_CLIENT
+    explicit PeerListWidget(QWidget *parent = nullptr);
+#else
     explicit PeerListWidget(PropertiesWidget *parent);
     ~PeerListWidget() override;
 
@@ -107,4 +110,5 @@ private:
     QHash<QHostAddress, QSet<QStandardItem *>> m_itemsByIP;  // must be kept in sync with `m_peerItems`
     bool m_resolveCountries = false;
     bool m_resolveHostNames = false;
+#endif
 };

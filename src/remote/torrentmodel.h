@@ -2,6 +2,8 @@
 #pragma once
 
 #include <QAbstractTableModel>
+#include <QColor>
+#include "base/bittorrent/torrent.h"
 #include <QJsonObject>
 #include <QSortFilterProxyModel>
 
@@ -21,12 +23,14 @@ namespace Remote
         void clear();
         QString hashAt(int row) const;
         QJsonObject torrentAt(int row) const;
+        static BitTorrent::TorrentState state(const QString &value);
         static QString stateName(const QString &state);
         static QString size(qint64 bytes);
         static QString speed(qint64 bytes);
         static QString duration(qint64 seconds);
 
     private:
+        QHash<BitTorrent::TorrentState, QColor> m_stateColors;
         QStringList m_hashes;
         QHash<QString, QJsonObject> m_torrents;
     };

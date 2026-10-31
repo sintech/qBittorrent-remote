@@ -32,7 +32,9 @@
 #include <QList>
 #include <QWidget>
 
+#ifndef QBT_REMOTE_CLIENT
 #include "base/settingvalue.h"
+#endif
 #include "gui/filterpatternformat.h"
 
 class QPushButton;
@@ -70,6 +72,7 @@ public:
     explicit PropertiesWidget(QWidget *parent);
     ~PropertiesWidget() override;
 
+#ifndef QBT_REMOTE_CLIENT
     BitTorrent::Torrent *getCurrentTorrent() const;
     TrackerListWidget *getTrackerList() const;
     PeerListWidget *getPeerList() const;
@@ -106,6 +109,9 @@ private:
     void showContentFilterContextMenu();
     void setContentFilterPattern();
 
+#endif
+
+protected:
     Ui::PropertiesWidget *m_ui = nullptr;
     BitTorrent::Torrent *m_torrent = nullptr;
     SlideState m_state;
@@ -119,5 +125,7 @@ private:
     LineEdit *m_contentFilterLine = nullptr;
     int m_handleWidth = -1;
 
+#ifndef QBT_REMOTE_CLIENT
     SettingValue<FilterPatternFormat> m_storeFilterPatternFormat;
+#endif
 };

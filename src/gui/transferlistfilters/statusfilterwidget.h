@@ -34,7 +34,9 @@
 #include <QtContainerFwd>
 #include <QHash>
 
+#ifndef QBT_REMOTE_CLIENT
 #include "base/torrentfilter.h"
+#endif
 #include "basefilterwidget.h"
 
 class StatusFilterWidget final : public BaseFilterWidget
@@ -44,11 +46,14 @@ class StatusFilterWidget final : public BaseFilterWidget
 
 public:
     StatusFilterWidget(QWidget *parent, TransferListWidget *transferList);
+#ifndef QBT_REMOTE_CLIENT
     ~StatusFilterWidget() override;
+#endif
 
 private:
     QSize sizeHint() const override;
 
+#ifndef QBT_REMOTE_CLIENT
     // These 4 methods are virtual slots in the base class.
     // No need to redeclare them here as slots.
     void showMenu() override;
@@ -78,4 +83,5 @@ private:
     int m_nbChecking = 0;
     int m_nbMoving = 0;
     int m_nbErrored = 0;
+#endif
 };

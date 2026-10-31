@@ -251,15 +251,6 @@ bool Net::DownloadManager::deleteCookie(const QNetworkCookie &cookie)
     return m_networkCookieJar->deleteCookie(cookie);
 }
 
-bool Net::DownloadManager::hasSupportedScheme(const QString &url)
-{
-    const QStringList schemes = QNetworkAccessManager().supportedSchemes();
-    return std::ranges::any_of(schemes, [&url](const QString &scheme)
-    {
-        return url.startsWith((scheme + u':'), Qt::CaseInsensitive);
-    });
-}
-
 void Net::DownloadManager::applyProxySettings()
 {
     const auto *proxyManager = ProxyConfigurationManager::instance();

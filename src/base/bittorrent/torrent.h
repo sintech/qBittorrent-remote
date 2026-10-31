@@ -33,6 +33,8 @@
 #include <QtTypes>
 #include <QMetaType>
 #include <QString>
+#include <QHashFunctions>
+#include <type_traits>
 
 #include "base/3rdparty/expected.hpp"
 #include "base/pathfwd.h"
@@ -109,7 +111,10 @@ namespace BitTorrent
         Error
     };
 
-    std::size_t qHash(TorrentState key, std::size_t seed = 0);
+    inline std::size_t qHash(const TorrentState key, const std::size_t seed = 0)
+    {
+        return ::qHash(static_cast<std::underlying_type_t<TorrentState>>(key), seed);
+    }
 
     class Torrent : public TorrentContentHandler
     {

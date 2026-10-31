@@ -158,28 +158,6 @@ QPixmap Utils::Gui::scaledPixmap(const Path &path, const int height)
     return (height == 0) ? pixmap : pixmap.scaledToHeight(height, Qt::SmoothTransformation);
 }
 
-QSize Utils::Gui::smallIconSize(const QWidget *widget)
-{
-    // Get DPI scaled icon size (device-dependent), see QT source
-    // under a 1080p screen is usually 16x16
-    const int s = QApplication::style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, widget);
-    return {s, s};
-}
-
-QSize Utils::Gui::mediumIconSize(const QWidget *widget)
-{
-    // under a 1080p screen is usually 24x24
-    return ((smallIconSize(widget) + largeIconSize(widget)) / 2);
-}
-
-QSize Utils::Gui::largeIconSize(const QWidget *widget)
-{
-    // Get DPI scaled icon size (device-dependent), see QT source
-    // under a 1080p screen is usually 32x32
-    const int s = QApplication::style()->pixelMetric(QStyle::PM_LargeIconSize, nullptr, widget);
-    return {s, s};
-}
-
 QPoint Utils::Gui::screenCenter(const QWidget *w)
 {
     // Returns the QPoint which the widget will be placed center on screen (where parent resides)

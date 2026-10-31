@@ -30,7 +30,9 @@
 
 #include <QDialog>
 
+#ifndef QBT_REMOTE_CLIENT
 #include "base/settingvalue.h"
+#endif
 
 namespace Ui
 {
@@ -56,5 +58,7 @@ private:
     void keyPressEvent(QKeyEvent *event) override;
 
     Ui::DownloadFromURLDialog *m_ui = nullptr;
+#ifndef QBT_REMOTE_CLIENT
     SettingValue<QSize> m_storeDialogSize;
+#endif
 };

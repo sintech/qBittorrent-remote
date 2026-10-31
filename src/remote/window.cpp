@@ -20,81 +20,41 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
-#include <QPainter>
 #include <QSettings>
 #include <QSplitter>
 #include <QStatusBar>
-#include <QStyledItemDelegate>
-#include <QStyleOptionProgressBar>
 #include <QTreeView>
-#include <QTabWidget>
 #include <QToolBar>
-#include <QTreeWidget>
-#include <QVBoxLayout>
 
 #include "ui_mainwindow.h"
 #include "properties.h"
 #include "sidebar.h"
-#include "gui/hidabletabwidget.h"
-#include "gui/progressbarpainter.h"
+#include "gui/transferlistwidget.h"
+#include "gui/lineedit.h"
+#include "gui/statusbar.h"
+#include "gui/downloadfromurldialog.h"
+#include "gui/deletionconfirmationdialog.h"
+#include "gui/uithememanager.h"
 
 using namespace Qt::StringLiterals;
 using namespace Remote;
 
-namespace
-{
-    class ProgressDelegate final : public QStyledItemDelegate
-    {
-    public:
-        explicit ProgressDelegate(QObject *parent) : QStyledItemDelegate(parent) {}
-        void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
-        {
-            if (index.column() != 4)
-            {
-                QStyledItemDelegate::paint(painter, option, index);
-                return;
-            }
-            QStyleOptionViewItem customOption(option);
-            const QString state = index.siblingAtColumn(5).data(Qt::UserRole).toString();
-            customOption.state.setFlag(QStyle::State_Enabled, state != u"error" && state != u"stoppedDL" && state != u"unknown");
-            m_painter.paint(painter, customOption, index.data().toString(),
-                int(index.data(Qt::UserRole).toDouble() * 100));
-        }
-    private:
-        ProgressBarPainter m_painter;
-    };
-
-}
-
 Window::Window(QWidget *parent, QNetworkAccessManager *network)
-    : QMainWindow(parent)
-    , m_ui(std::make_unique<Ui::MainWindow>())
+    : MainWindow(parent)
     , m_client(this, network)
     , m_model(this)
     , m_filter(this)
 {
+    UIThemeManager::initInstance();
     // Reuse the unmodified upstream window, menus and toolbar, not a web view.
-    m_ui->setupUi(this);
     setWindowTitle(u"qBittorrent Remote — 5.2.4"_s);
     setWindowIcon(QIcon(u":/icons/qbittorrent.ico"_s));
-    const QMap<QAction *, QString> icons {
-        {m_ui->actionOpen, u"list-add"_s}, {m_ui->actionDownloadFromURL, u"insert-link"_s},
-        {m_ui->actionDelete, u"list-remove"_s}, {m_ui->actionStart, u"torrent-start"_s},
-        {m_ui->actionStop, u"torrent-stop"_s}, {m_ui->actionTopQueuePos, u"go-top"_s},
-        {m_ui->actionIncreaseQueuePos, u"go-up"_s}, {m_ui->actionDecreaseQueuePos, u"go-down"_s},
-        {m_ui->actionBottomQueuePos, u"go-bottom"_s}, {m_ui->actionOptions, u"configure"_s},
-        {m_ui->actionCreateTorrent, u"torrent-creator"_s}, {m_ui->actionLock, u"object-locked"_s},
-        {m_ui->actionExit, u"application-exit"_s}
-    };
     // An unfinished action must never look operational or act on a local session.
     for (auto *action : findChildren<QAction *>())
     {
         if (!action->isSeparator() && !action->menu())
             action->setEnabled(false);
     }
-    for (auto it = icons.begin(); it != icons.end(); ++it)
-        it.key()->setIcon(QIcon(u":/icons/" + it.value() + u".svg"));
-    m_ui->toolBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
     auto *connectAction = new QAction(QIcon(u":/icons/network-server.svg"_s), tr("Connect to Server…"), this);
     connectAction->setObjectName(u"actionConnectRemote"_s);
     connectAction->setShortcut(Qt::CTRL | Qt::SHIFT | Qt::Key_C);
@@ -114,102 +74,25 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
         });
     }
 
-    auto *tabs = new HidableTabWidget(this);
-    m_horizontal = new QSplitter(Qt::Horizontal, tabs);
-    m_sidebar = new Sidebar(m_horizontal);
-    m_vertical = new QSplitter(Qt::Vertical, m_horizontal);
-    m_vertical->setChildrenCollapsible(false);
-    m_vertical->setFrameShape(QFrame::NoFrame);
-    auto *listArea = new QWidget(m_vertical);
-    auto *listLayout = new QVBoxLayout(listArea);
-    listLayout->setContentsMargins(0, 0, 0, 0);
-    auto *searchArea = new QWidget(this);
-    auto *searchLayout = new QHBoxLayout(searchArea);
-    searchLayout->setContentsMargins(0, 0, 0, 0);
-    m_search = new QLineEdit(searchArea);
-    m_search->setFixedWidth(200);
-    m_search->setPlaceholderText(QCoreApplication::translate("MainWindow", "Filter torrents..."));
-    m_search->setClearButtonEnabled(true);
-    m_filterColumn = new QComboBox(searchArea);
-    m_filterColumn->addItem(m_model.headerData(1, Qt::Horizontal, Qt::DisplayRole).toString(), 1);
-    m_filterColumn->addItem(m_model.headerData(26, Qt::Horizontal, Qt::DisplayRole).toString(), 26);
-    searchLayout->addWidget(m_search);
-    searchLayout->addWidget(new QLabel(QCoreApplication::translate("MainWindow", "Filter by:"), searchArea));
-    searchLayout->addWidget(m_filterColumn);
-    auto *spacer = new QWidget(this);
-    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    m_ui->toolBar->insertWidget(m_ui->actionLock, spacer);
-    m_ui->toolBar->insertWidget(m_ui->actionLock, searchArea);
-    m_table = new QTreeView(listArea);
-    m_table->setObjectName(u"remoteTorrentTable"_s);
     m_filter.setSourceModel(&m_model);
     m_filter.setSortRole(Qt::UserRole);
     m_filter.setSortCaseSensitivity(Qt::CaseInsensitive);
-    m_table->setModel(&m_filter);
-    m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_table->setSelectionMode(QAbstractItemView::ExtendedSelection);
-    m_table->setUniformRowHeights(true);
-    m_table->setAlternatingRowColors(true);
-    m_table->setRootIsDecorated(false);
-    m_table->setAllColumnsShowFocus(true);
-    m_table->setItemsExpandable(false);
-    m_table->setAutoScroll(true);
-    m_table->header()->setSectionsMovable(true);
-    m_table->header()->setFirstSectionMovable(true);
-    m_table->header()->setStretchLastSection(false);
-    m_table->setItemDelegate(new ProgressDelegate(m_table));
-    m_table->setSortingEnabled(true);
+    m_table = new TransferListWidget(&m_filter, this);
+    m_table->setObjectName(u"remoteTorrentTable"_s);
+    m_table->setAcceptDrops(false);
     m_table->sortByColumn(1, Qt::AscendingOrder);
-    const QList<int> widths {35, 260, 85, 85, 110, 120, 80, 80, 90, 90, 80, 65};
-    for (int column = 0; column < widths.size(); ++column)
-        m_table->setColumnWidth(column, widths[column]);
-    m_table->hideColumn(3);
-    for (int column = 12; column < m_model.columnCount(); ++column)
-        m_table->hideColumn(column);
-    m_table->header()->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(m_table->header(), &QWidget::customContextMenuRequested, this, [this](const QPoint &pos)
-    {
-        QMenu menu(this);
-        for (int column = 0; column < m_model.columnCount(); ++column)
-        {
-            auto *action = menu.addAction(m_model.headerData(column, Qt::Horizontal, Qt::DisplayRole).toString());
-            action->setCheckable(true);
-            action->setChecked(!m_table->isColumnHidden(column));
-            connect(action, &QAction::toggled, this, [this, column](const bool checked)
-            { m_table->setColumnHidden(column, !checked); });
-        }
-        menu.exec(m_table->header()->mapToGlobal(pos));
-    });
-    listLayout->addWidget(m_table);
+    m_properties = new Properties(this);
+    const auto view = setupTransferView(m_table, m_properties);
+    m_horizontal = view.horizontal;
+    m_vertical = view.vertical;
+    m_search = view.filter;
+    m_filterColumn = view.filterColumn;
+    m_sidebar = new Sidebar(m_horizontal);
+    m_horizontal->insertWidget(0, m_sidebar);
     m_horizontal->setStretchFactor(1, 1);
-    m_horizontal->setSizes({170, 800});
 
-    m_properties = new Properties(m_vertical);
-    m_vertical->setSizes({380, 300});
-    tabs->addTab(m_horizontal, QIcon(u":/icons/folder-remote.svg"_s), tr("Transfers"));
-    m_ui->centralWidgetLayout->addWidget(tabs);
-    m_status = new QLabel(this);
-    m_status->setPixmap(QIcon(u":/icons/disconnected.svg"_s).pixmap(16, 16));
-    m_freeSpace = new QLabel(tr("Free space: N/A"), this);
-    m_dht = new QLabel(tr("DHT: %1 nodes").arg(0), this);
-    statusBar()->addWidget(m_freeSpace);
-    statusBar()->addWidget(m_dht);
-    statusBar()->addPermanentWidget(m_status);
-    const auto addRate = [this](const QString &icon, QLabel **label)
-    {
-        auto *area = new QWidget(this);
-        auto *layout = new QHBoxLayout(area);
-        layout->setContentsMargins(4, 0, 4, 0);
-        auto *image = new QLabel(area);
-        image->setPixmap(QIcon(u":/icons/" + icon + u".svg").pixmap(16, 16));
-        *label = new QLabel(u"0 B/s"_s, area);
-        layout->addWidget(image);
-        layout->addWidget(*label);
-        area->setMinimumWidth(155);
-        statusBar()->addPermanentWidget(area);
-    };
-    addRate(u"downloading"_s, &m_rates);
-    addRate(u"upload"_s, &m_uploadRate);
+    m_nativeStatus = new StatusBar(this);
+    setStatusBar(m_nativeStatus);
 
     const auto enableAction = [](QAction *action) { action->setEnabled(true); };
     for (auto *action : {m_ui->actionExit, m_ui->actionCloseWindow,
@@ -254,15 +137,14 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     });
     connect(&m_client, &Client::statusChanged, this, [this](const QString &message)
     {
-        m_status->setPixmap(QIcon(m_client.isConnected() ? u":/icons/connected.svg"_s : u":/icons/disconnected.svg"_s).pixmap(16, 16));
-        m_status->setToolTip(message);
+        m_nativeStatus->setConnectionMessage(message);
         if (!m_client.isConnected())
             statusBar()->showMessage(message, 4000);
     });
     connect(&m_client, &Client::errorOccurred, this, [this](const QString &message)
     {
         statusBar()->showMessage(message, 15000);
-        m_status->setToolTip(message);
+        m_nativeStatus->setConnectionMessage(message);
     });
     connect(&m_client, &Client::syncReceived, this, &Window::applySync);
     connect(&m_client, &Client::reset, this, [this]
@@ -272,10 +154,7 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
         m_categories = {};
         m_tags.clear();
         m_serverState = {};
-        m_rates->setText(u"0 B/s"_s);
-        m_uploadRate->setText(u"0 B/s"_s);
-        m_freeSpace->setText(tr("Free space: N/A"));
-        m_dht->setText(tr("DHT: %1 nodes").arg(0));
+        m_nativeStatus->setSnapshot({});
         m_properties->clear();
         m_properties->resetSpeedHistory();
         updateFilters();
@@ -322,7 +201,7 @@ void Window::closeEvent(QCloseEvent *event)
     settings.setValue(u"remote/nativeVertical"_s, m_vertical->saveState());
     settings.setValue(u"remote/nativeHorizontal"_s, m_horizontal->saveState());
     m_client.disconnectFromServer();
-    QMainWindow::closeEvent(event);
+    MainWindow::closeEvent(event);
 }
 
 void Window::showConnectionDialog()
@@ -435,10 +314,19 @@ void Window::applySync(const QJsonObject &sync)
     for (auto it = state.begin(); it != state.end(); ++it)
         m_serverState.insert(it.key(), it.value());
     m_properties->pushStats(m_serverState);
-    m_rates->setText(TorrentModel::speed(m_serverState.value(u"dl_info_speed"_s).toInteger()));
-    m_uploadRate->setText(TorrentModel::speed(m_serverState.value(u"up_info_speed"_s).toInteger()));
-    m_freeSpace->setText(QCoreApplication::translate("StatusBar", "Free space: %1").arg(TorrentModel::size(m_serverState.value(u"free_space_on_disk"_s).toInteger())));
-    m_dht->setText(QCoreApplication::translate("StatusBar", "DHT: %1 nodes").arg(m_serverState.value(u"dht_nodes"_s).toInteger()));
+    StatusBar::Snapshot status;
+    status.listening = m_serverState.value(u"connection_status"_s).toString() != u"disconnected";
+    status.incoming = m_serverState.value(u"connection_status"_s).toString() == u"connected";
+    status.alternative = m_serverState.value(u"use_alt_speed_limits"_s).toBool();
+    status.dhtNodes = m_serverState.value(u"dht_nodes"_s).toInt();
+    status.downloadRate = m_serverState.value(u"dl_info_speed"_s).toInteger();
+    status.uploadRate = m_serverState.value(u"up_info_speed"_s).toInteger();
+    status.downloaded = m_serverState.value(u"dl_info_data"_s).toInteger();
+    status.uploaded = m_serverState.value(u"up_info_data"_s).toInteger();
+    status.downloadLimit = m_serverState.value(u"dl_rate_limit"_s).toInt();
+    status.uploadLimit = m_serverState.value(u"up_rate_limit"_s).toInt();
+    status.freeSpace = m_serverState.value(u"free_space_on_disk"_s).toInteger();
+    m_nativeStatus->setSnapshot(status);
     updateFilters();
 }
 
@@ -463,17 +351,14 @@ void Window::removeSelected()
     const auto hashes = selectedHashes();
     if (hashes.isEmpty())
         return;
-    QMessageBox dialog(QMessageBox::Question, tr("Remove torrents"),
-        tr("Remove %1 torrent(s) from the server?").arg(hashes.size()),
-        QMessageBox::Yes | QMessageBox::No, this);
-    dialog.setDefaultButton(QMessageBox::No);
-    auto *deleteFiles = new QCheckBox(tr("Also delete the files on the server"), &dialog);
-    dialog.setCheckBox(deleteFiles);
-    if (dialog.exec() != QMessageBox::Yes)
+    const auto selected = m_table->selectionModel()->selectedRows();
+    const QString name = selected.size() == 1 ? selected.first().siblingAtColumn(1).data().toString() : QString();
+    DeletionConfirmationDialog dialog(this, hashes.size(), name, false);
+    if (dialog.exec() != QDialog::Accepted)
         return;
     QUrlQuery form;
     form.addQueryItem(u"hashes"_s, hashes.join(u'|'));
-    form.addQueryItem(u"deleteFiles"_s, deleteFiles->isChecked() ? u"true"_s : u"false"_s);
+    form.addQueryItem(u"deleteFiles"_s, dialog.isRemoveContentSelected() ? u"true"_s : u"false"_s);
     m_client.command(u"torrents/delete"_s, form);
 }
 
@@ -493,20 +378,14 @@ void Window::addFiles()
 
 void Window::addLinks()
 {
-    bool accepted = false;
-    const QString links = QInputDialog::getMultiLineText(this, tr("Add Torrent Link"),
-        tr("Magnet links or HTTP(S) torrent URLs, one per line:"), {}, &accepted);
-    if (!accepted || links.trimmed().isEmpty())
-        return;
-    const QString savePath = QInputDialog::getText(this, tr("Server download directory"),
-        tr("Server path (leave empty for the server default):"), QLineEdit::Normal, {}, &accepted);
-    if (!accepted)
-        return;
-    QUrlQuery form;
-    form.addQueryItem(u"urls"_s, links.trimmed());
-    if (!savePath.isEmpty())
-        form.addQueryItem(u"savepath"_s, savePath);
-    m_client.command(u"torrents/add"_s, form);
+    DownloadFromURLDialog dialog(this);
+    connect(&dialog, &DownloadFromURLDialog::urlsReadyToBeDownloaded, this, [this](const QStringList &urls)
+    {
+        QUrlQuery form;
+        form.addQueryItem(u"urls"_s, urls.join(u'\n'));
+        m_client.command(u"torrents/add"_s, form);
+    });
+    dialog.exec();
 }
 
 void Window::showContextMenu(const QPoint &position)
@@ -514,19 +393,26 @@ void Window::showContextMenu(const QPoint &position)
     if (!m_client.isConnected() || selectedHashes().isEmpty())
         return;
     QMenu menu(this);
-    menu.addAction(m_ui->actionStart);
-    menu.addAction(m_ui->actionStop);
-    menu.addAction(tr("Force Start"), this, [this]
+    using Command = TransferListWidget::Command;
+    const auto add = [this, &menu](Command command, const auto &callback)
+    {
+        auto *action = TransferListWidget::createAction(command, &menu);
+        connect(action, &QAction::triggered, this, callback);
+        menu.addAction(action);
+    };
+    add(Command::Start, [this] { runCommand(u"torrents/start"_s); });
+    add(Command::Stop, [this] { runCommand(u"torrents/stop"_s); });
+    add(Command::ForceStart, [this]
     {
         QUrlQuery form;
         form.addQueryItem(u"value"_s, u"true"_s);
         runCommand(u"torrents/setForceStart"_s, form);
     });
     menu.addSeparator();
-    menu.addAction(tr("Force Recheck"), this, [this] { runCommand(u"torrents/recheck"_s); });
-    menu.addAction(tr("Force Reannounce"), this, [this] { runCommand(u"torrents/reannounce"_s); });
+    add(Command::Remove, [this] { removeSelected(); });
     menu.addSeparator();
-    menu.addAction(m_ui->actionDelete);
+    add(Command::Recheck, [this] { runCommand(u"torrents/recheck"_s); });
+    add(Command::Reannounce, [this] { runCommand(u"torrents/reannounce"_s); });
     menu.exec(m_table->viewport()->mapToGlobal(position));
 }
 

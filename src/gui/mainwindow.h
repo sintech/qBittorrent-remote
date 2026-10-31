@@ -32,9 +32,11 @@
 #include <QMainWindow>
 #include <QPointer>
 
+#ifndef QBT_REMOTE_CLIENT
 #include "base/bittorrent/torrent.h"
 #include "base/logger.h"
 #include "base/settingvalue.h"
+#endif
 #include "guiapplicationcomponent.h"
 #include "windowstate.h"
 
@@ -80,12 +82,17 @@ namespace Ui
     class MainWindow;
 }
 
-class MainWindow final : public GUIApplicationComponent<QMainWindow>
+class MainWindow : public GUIApplicationComponent<QMainWindow>
 {
     Q_OBJECT
     Q_DISABLE_COPY_MOVE(MainWindow)
 
 public:
+#ifdef QBT_REMOTE_CLIENT
+    explicit MainWindow(QWidget *parent);
+    ~MainWindow() override;
+#endif
+#ifndef QBT_REMOTE_CLIENT
     explicit MainWindow(IGUIApplication *app, WindowState initialState = WindowState::Normal, const QString &titleSuffix = {});
     ~MainWindow() override;
 
@@ -208,7 +215,6 @@ private:
     bool verifyPythonInstaller(const Path &installerPath) const;
 #endif
 
-    Ui::MainWindow *m_ui = nullptr;
 
     QString m_windowTitle;
     QString m_downloadRate;
@@ -265,4 +271,20 @@ private:
     std::unique_ptr<MacUtils::Badger> m_badger;
     std::unique_ptr<MacUtils::StatusItem> m_statusItem;
 #endif
+#endif
+protected:
+    struct TransferView
+    {
+        QTabWidget *tabs;
+        QSplitter *horizontal;
+        QSplitter *vertical;
+        LineEdit *filter;
+        QComboBox *filterColumn;
+        QWidget *filterWidget;
+        QAction *filterAction;
+    };
+    TransferView setupTransferView(TransferListWidget *transfers, PropertiesWidget *properties);
+    void initializeUi();
+    Ui::MainWindow *m_ui = nullptr;
+
 };

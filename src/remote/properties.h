@@ -5,21 +5,21 @@
 
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QWidget>
+#include "gui/properties/propertieswidget.h"
 
 class PropTabBar;
 class SpeedWidget;
 class DownloadedPiecesBar;
 class PieceAvailabilityBar;
 class QStandardItemModel;
-class PeerListView;
-class TrackerListView;
+class PeerListWidget;
+class TrackerListWidget;
 
 namespace Ui { class PropertiesWidget; }
 
 namespace Remote
 {
-    class Properties final : public QWidget
+    class Properties final : public PropertiesWidget
     {
         Q_OBJECT
     public:
@@ -39,13 +39,12 @@ namespace Remote
     private:
         void showGeneral(const QJsonObject &properties);
         void showContent(const QJsonArray &files);
-        std::unique_ptr<Ui::PropertiesWidget> m_ui;
         SpeedWidget *m_speed = nullptr;
         DownloadedPiecesBar *m_progress = nullptr;
         PieceAvailabilityBar *m_availability = nullptr;
         PropTabBar *m_tabs = nullptr;
-        TrackerListView *m_trackers = nullptr;
-        PeerListView *m_peers = nullptr;
+        TrackerListWidget *m_trackers = nullptr;
+        PeerListWidget *m_peers = nullptr;
         QStandardItemModel *m_files = nullptr;
         QJsonObject m_torrent;
     };

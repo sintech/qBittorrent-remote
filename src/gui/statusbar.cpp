@@ -36,6 +36,12 @@
 #include <QPushButton>
 #include <QStyle>
 
+#include "base/global.h"
+#include "base/uidefaults.h"
+#include <QSettings>
+#include "base/utils/misc.h"
+#include "utils.h"
+#ifndef QBT_REMOTE_CLIENT
 #include "base/bittorrent/session.h"
 #include "base/bittorrent/sessionstatus.h"
 #include "base/preferences.h"
@@ -43,6 +49,9 @@
 #include "speedlimitdialog.h"
 #include "uithememanager.h"
 #include "utils.h"
+
+#endif
+#include "uithememanager.h"
 
 namespace
 {
@@ -66,8 +75,10 @@ StatusBar::StatusBar(QWidget *parent)
     setStyleSheet(u"QStatusBar::item { border-width: 0; }"_s);
 #endif
 
+#ifndef QBT_REMOTE_CLIENT
     BitTorrent::Session *const session = BitTorrent::Session::instance();
     connect(session, &BitTorrent::Session::speedLimitModeChanged, this, &StatusBar::updateAltSpeedsBtn);
+#endif
     QWidget *container = new QWidget(this);
     auto *layout = new QHBoxLayout(container);
     layout->setContentsMargins(0,0,0,0);
@@ -116,7 +127,11 @@ StatusBar::StatusBar(QWidget *parent)
     m_altSpeedsBtn->setFlat(true);
     m_altSpeedsBtn->setFocusPolicy(Qt::NoFocus);
     m_altSpeedsBtn->setCursor(Qt::PointingHandCursor);
+#ifndef QBT_REMOTE_CLIENT
     updateAltSpeedsBtn(session->isAltGlobalSpeedLimitEnabled());
+#else
+    updateAltSpeedsBtn(false);
+#endif
     connect(m_altSpeedsBtn, &QAbstractButton::clicked, this, &StatusBar::alternativeSpeedsButtonClicked);
 
     // Because on some platforms the default icon size is bigger
@@ -156,6 +171,7 @@ StatusBar::StatusBar(QWidget *parent)
     setStyleSheet(u"QWidget {margin: 0;}"_s);
     container->adjustSize();
     adjustSize();
+#ifndef QBT_REMOTE_CLIENT
     updateFreeDiskSpaceVisibility();
     updateExternalAddressesVisibility();
     // Is DHT enabled
@@ -169,6 +185,12 @@ StatusBar::StatusBar(QWidget *parent)
     connect(session, &BitTorrent::Session::freeDiskSpaceChecked, this, &StatusBar::updateFreeDiskSpaceLabel);
 
     connect(Preferences::instance(), &Preferences::changed, this, &StatusBar::optionsSaved);
+#else
+    updateFreeDiskSpaceVisibility();
+    m_lastExternalIPsLbl->hide();
+    m_lastExternalIPsSeparator->hide();
+    setSnapshot({});
+#endif
 }
 
 StatusBar::~StatusBar()
@@ -194,9 +216,7 @@ void StatusBar::showRestartRequired()
 
 void StatusBar::updateConnectionStatus()
 {
-    const BitTorrent::SessionStatus &sessionStatus = BitTorrent::Session::instance()->status();
-
-    if (!BitTorrent::Session::instance()->isListening())
+    if (!m_snapshot.listening)
     {
         m_connecStatusLblIcon->setIcon(UIThemeManager::instance()->getIcon(u"disconnected"_s));
         const QString tooltip = u"<b>%1</b><br>%2"_s.arg(tr("Connection Status:"), tr("Offline. This usually means that qBittorrent failed to listen on the selected port for incoming connections."));
@@ -204,7 +224,7 @@ void StatusBar::updateConnectionStatus()
     }
     else
     {
-        if (sessionStatus.hasIncomingConnections)
+        if (m_snapshot.incoming)
         {
             // Connection OK
             m_connecStatusLblIcon->setIcon(UIThemeManager::instance()->getIcon(u"connected"_s));
@@ -222,11 +242,11 @@ void StatusBar::updateConnectionStatus()
 
 void StatusBar::updateDHTNodesNumber()
 {
-    if (BitTorrent::Session::instance()->isDHTEnabled())
+    if (m_snapshot.dhtEnabled)
     {
         m_DHTLbl->setVisible(true);
         m_DHTSeparator->setVisible(true);
-        m_DHTLbl->setText(tr("DHT: %1 nodes").arg(BitTorrent::Session::instance()->status().dhtNodes));
+        m_DHTLbl->setText(tr("DHT: %1 nodes").arg(m_snapshot.dhtNodes));
     }
     else
     {
@@ -242,15 +262,19 @@ void StatusBar::updateFreeDiskSpaceLabel(const qint64 value)
 
 void StatusBar::updateFreeDiskSpaceVisibility()
 {
+#ifndef QBT_REMOTE_CLIENT
     const bool isVisible = Preferences::instance()->isStatusbarFreeDiskSpaceDisplayed();
+#else
+    const bool isVisible = QSettings().value(u"remote/showFreeDiskSpace"_s, Defaults::GUI::ShowFreeDiskSpace).toBool();
+#endif
     m_freeDiskSpaceLbl->setVisible(isVisible);
     m_freeDiskSpaceSeparator->setVisible(isVisible);
 }
 
 void StatusBar::updateExternalAddressesLabel()
 {
-    const QString lastExternalIPv4Address = BitTorrent::Session::instance()->lastExternalIPv4Address();
-    const QString lastExternalIPv6Address = BitTorrent::Session::instance()->lastExternalIPv6Address();
+    const QString lastExternalIPv4Address = m_snapshot.externalIPv4;
+    const QString lastExternalIPv6Address = m_snapshot.externalIPv6;
     QString addressText = tr("External IP: N/A");
 
     const bool hasIPv4Address = !lastExternalIPv4Address.isEmpty();
@@ -266,32 +290,50 @@ void StatusBar::updateExternalAddressesLabel()
 
 void StatusBar::updateExternalAddressesVisibility()
 {
+#ifndef QBT_REMOTE_CLIENT
     const bool isVisible = Preferences::instance()->isStatusbarExternalIPDisplayed();
+#else
+    const bool isVisible = false;
+#endif
     m_lastExternalIPsLbl->setVisible(isVisible);
     m_lastExternalIPsSeparator->setVisible(isVisible);
 }
 
 void StatusBar::updateSpeedLabels()
 {
-    const BitTorrent::SessionStatus &sessionStatus = BitTorrent::Session::instance()->status();
-
-    QString dlSpeedLbl = Utils::Misc::friendlyUnit(sessionStatus.payloadDownloadRate, true);
-    const int dlSpeedLimit = BitTorrent::Session::instance()->downloadSpeedLimit();
+    QString dlSpeedLbl = Utils::Misc::friendlyUnit(m_snapshot.downloadRate, true);
+    const int dlSpeedLimit = m_snapshot.downloadLimit;
     if (dlSpeedLimit > 0)
         dlSpeedLbl += u" [" + Utils::Misc::friendlyUnit(dlSpeedLimit, true) + u']';
-    dlSpeedLbl += u" (" + Utils::Misc::friendlyUnit(sessionStatus.totalPayloadDownload) + u')';
+    dlSpeedLbl += u" (" + Utils::Misc::friendlyUnit(m_snapshot.downloaded) + u')';
     m_dlSpeedLbl->setText(dlSpeedLbl);
 
-    QString upSpeedLbl = Utils::Misc::friendlyUnit(sessionStatus.payloadUploadRate, true);
-    const int upSpeedLimit = BitTorrent::Session::instance()->uploadSpeedLimit();
+    QString upSpeedLbl = Utils::Misc::friendlyUnit(m_snapshot.uploadRate, true);
+    const int upSpeedLimit = m_snapshot.uploadLimit;
     if (upSpeedLimit > 0)
         upSpeedLbl += u" [" + Utils::Misc::friendlyUnit(upSpeedLimit, true) + u']';
-    upSpeedLbl += u" (" + Utils::Misc::friendlyUnit(sessionStatus.totalPayloadUpload) + u')';
+    upSpeedLbl += u" (" + Utils::Misc::friendlyUnit(m_snapshot.uploaded) + u')';
     m_upSpeedLbl->setText(upSpeedLbl);
 }
 
 void StatusBar::refresh()
 {
+#ifndef QBT_REMOTE_CLIENT
+    const auto *session = BitTorrent::Session::instance();
+    const auto &status = session->status();
+    m_snapshot.listening = session->isListening();
+    m_snapshot.incoming = status.hasIncomingConnections;
+    m_snapshot.dhtEnabled = session->isDHTEnabled();
+    m_snapshot.dhtNodes = status.dhtNodes;
+    m_snapshot.externalIPv4 = session->lastExternalIPv4Address();
+    m_snapshot.externalIPv6 = session->lastExternalIPv6Address();
+    m_snapshot.downloadRate = status.payloadDownloadRate;
+    m_snapshot.uploadRate = status.payloadUploadRate;
+    m_snapshot.downloaded = status.totalPayloadDownload;
+    m_snapshot.uploaded = status.totalPayloadUpload;
+    m_snapshot.downloadLimit = session->downloadSpeedLimit();
+    m_snapshot.uploadLimit = session->uploadSpeedLimit();
+#endif
     updateConnectionStatus();
     updateDHTNodesNumber();
     updateExternalAddressesLabel();
@@ -317,13 +359,27 @@ void StatusBar::updateAltSpeedsBtn(bool alternative)
 
 void StatusBar::capSpeed()
 {
+#ifndef QBT_REMOTE_CLIENT
     auto *dialog = new SpeedLimitDialog {parentWidget()};
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->open();
+#endif
 }
 
 void StatusBar::optionsSaved()
 {
     updateFreeDiskSpaceVisibility();
     updateExternalAddressesVisibility();
+}
+
+void StatusBar::setSnapshot(const Snapshot &snapshot)
+{
+    m_snapshot = snapshot;
+    updateAltSpeedsBtn(snapshot.alternative);
+    updateFreeDiskSpaceLabel(snapshot.freeSpace);
+}
+
+void StatusBar::setConnectionMessage(const QString &message)
+{
+    m_connecStatusLblIcon->setToolTip(message);
 }

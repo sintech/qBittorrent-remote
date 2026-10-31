@@ -31,6 +31,9 @@
 
 #include <QtContainerFwd>
 #include <QWidget>
+#include <QList>
+class QVBoxLayout;
+class TransferListFiltersWidgetItem;
 
 class TrackersFilterWidget;
 class TransferListWidget;
@@ -41,16 +44,22 @@ namespace BitTorrent
     struct TrackerEntryStatus;
 }
 
-class TransferListFiltersWidget final : public QWidget
+class TransferListFiltersWidget : public QWidget
 {
     Q_OBJECT
     Q_DISABLE_COPY_MOVE(TransferListFiltersWidget)
 
 public:
+    explicit TransferListFiltersWidget(QWidget *parent);
+    TransferListFiltersWidgetItem *appendFilter(const QString &title, QWidget *filter);
+#ifndef QBT_REMOTE_CLIENT
     TransferListFiltersWidget(QWidget *parent, TransferListWidget *transferList, bool downloadFavicon);
     void setDownloadTrackerFavicon(bool value);
 
+#endif
 private:
+    QVBoxLayout *createContainer();
+    QVBoxLayout *m_filterLayout = nullptr;
     TransferListWidget *m_transferList = nullptr;
     TrackersFilterWidget *m_trackersFilterWidget = nullptr;
     bool m_useSeparateTrackerStatusFilter = false;

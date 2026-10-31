@@ -1,4 +1,4 @@
-# A remote frontend that reuses the upstream desktop window form and resources.
+# API-only target: canonical upstream widgets plus remote data/command adapters.
 # Deliberately does not link qbt_base or instantiate a local BitTorrent session.
 cmake_minimum_required(VERSION 3.16)
 project(qBittorrentRemote VERSION 5.2.4 LANGUAGES CXX)
@@ -7,16 +7,26 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
-set(CMAKE_AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../gui" "${CMAKE_CURRENT_BINARY_DIR}")
-# Reuse the actual upstream property form. Only its promoted, session-bound file
-# controller is replaced by its shared presentation view and remote content model.
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../gui/properties/propertieswidget.ui")
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../gui/properties/propertieswidget.ui" propertiesForm)
-string(REPLACE "TorrentContentWidget" "TorrentContentView" propertiesForm "${propertiesForm}")
-string(REPLACE "gui/torrentcontentwidget.h" "gui/propertylistviews.h" propertiesForm "${propertiesForm}")
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/remoteproperties.ui" "${propertiesForm}")
+set(CMAKE_AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../gui" "${CMAKE_CURRENT_SOURCE_DIR}/../gui/properties" "${CMAKE_CURRENT_BINARY_DIR}")
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Network Widgets Svg)
 add_library(qbt_remote STATIC client.cpp client.h torrentmodel.cpp torrentmodel.h window.cpp window.h properties.cpp properties.h sidebar.cpp sidebar.h
+    ../gui/uithememanager.cpp ../gui/uithememanager.h
+    ../gui/uithemesource.cpp ../gui/uithemesource.h
+    ../base/path.cpp ../base/utils/readfile.cpp
+    ../gui/transferlistfilterswidget.cpp ../gui/transferlistfilterswidget.h
+    ../gui/transferlistfilters/basefilterwidget.cpp ../gui/transferlistfilters/basefilterwidget.h
+    ../gui/transferlistfilters/statusfilterwidget.cpp ../gui/transferlistfilters/statusfilterwidget.h
+    ../gui/transferlistfilters/categoryfilterwidget.cpp ../gui/transferlistfilters/categoryfilterwidget.h
+    ../gui/transferlistfilters/tagfilterwidget.cpp ../gui/transferlistfilters/tagfilterwidget.h
+    ../gui/downloadfromurldialog.cpp ../gui/downloadfromurldialog.h ../gui/downloadfromurldialog.ui
+    ../gui/deletionconfirmationdialog.cpp ../gui/deletionconfirmationdialog.h ../gui/deletionconfirmationdialog.ui
+    ../base/net/downloadscheme.cpp
+    ../gui/mainwindow.cpp ../gui/mainwindow.h
+    ../gui/statusbar.cpp ../gui/statusbar.h ../gui/iconsizes.cpp
+    ../gui/transferlistwidget.cpp ../gui/transferlistwidget.h
+    ../gui/transferlistmodelpresentation.cpp
+    ../gui/transferlistdelegate.cpp ../gui/transferlistdelegate.h
+    ../base/applicationcomponent.cpp
     ../gui/propertylistviews.cpp ../gui/propertylistviews.h
     ../gui/properties/peerlistsortmodel.cpp ../gui/properties/peerlistsortmodel.h
     ../gui/trackerlist/trackerlistsortmodel.cpp ../gui/trackerlist/trackerlistsortmodel.h
@@ -32,7 +42,12 @@ add_library(qbt_remote STATIC client.cpp client.h torrentmodel.cpp torrentmodel.
     ../gui/hidabletabwidget.cpp ../gui/hidabletabwidget.h
     ../gui/properties/proptabbar.cpp ../gui/properties/proptabbar.h
     ../gui/progressbarpainter.cpp ../gui/progressbarpainter.h
-    "${CMAKE_CURRENT_BINARY_DIR}/remoteproperties.ui")
+    ../gui/properties/propertieswidget.ui
+    ../gui/properties/propertieswidget.cpp ../gui/properties/propertieswidget.h
+    ../gui/properties/peerlistwidget.cpp ../gui/properties/peerlistwidget.h
+    ../gui/trackerlist/trackerlistwidget.cpp ../gui/trackerlist/trackerlistwidget.h
+    ../gui/torrentcontentwidget.cpp ../gui/torrentcontentwidget.h
+    ../gui/lineedit.cpp ../gui/lineedit.h)
 target_compile_definitions(qbt_remote PUBLIC QBT_REMOTE_CLIENT QBT_USE_QCOLLATOR=1)
 target_compile_definitions(qbt_remote PUBLIC QT_USE_QSTRINGBUILDER QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
 target_link_libraries(qbt_remote PUBLIC Qt6::Core Qt6::Network Qt6::Widgets)

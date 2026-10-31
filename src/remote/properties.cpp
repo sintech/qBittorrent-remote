@@ -7,12 +7,12 @@
 #include <QHeaderView>
 #include <QJsonArray>
 #include <QLabel>
-#include <QPainter>
 #include <QPushButton>
 #include <QSettings>
 #include <QStandardItemModel>
 #include <QTreeView>
 #include <QSet>
+#include <QSortFilterProxyModel>
 #include "gui/propertylistviews.h"
 
 #include "gui/properties/proptabbar.h"
@@ -20,7 +20,11 @@
 #include "gui/properties/downloadedpiecesbar.h"
 #include "gui/properties/pieceavailabilitybar.h"
 #include "torrentmodel.h"
-#include "ui_remoteproperties.h"
+#include "ui_propertieswidget.h"
+#include "gui/properties/peerlistwidget.h"
+#include "gui/trackerlist/trackerlistwidget.h"
+#include "gui/torrentcontentwidget.h"
+#include "gui/lineedit.h"
 
 using namespace Qt::StringLiterals;
 using namespace Remote;
@@ -103,61 +107,45 @@ namespace
 }
 
 Properties::Properties(QWidget *parent)
-    : QWidget(parent)
-    , m_ui(std::make_unique<Ui::PropertiesWidget>())
+    : PropertiesWidget(parent)
 {
-    m_ui->setupUi(this);
     setObjectName(u"remoteProperties"_s);
-    m_progress = new DownloadedPiecesBar(this);
+    m_progress = m_downloadedPieces;
     m_progress->setObjectName(u"remotePieceStrip"_s);
-    m_progress->setFixedHeight(18);
-    m_progress->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    m_ui->tempProgressBarArea->hide();
-    m_ui->groupBarLayout->addWidget(m_progress, 0, 1);
-    m_availability = new PieceAvailabilityBar(this);
-    m_availability->setFixedHeight(18);
-    m_availability->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    m_ui->tempAvailabilityBarArea->hide();
-    m_ui->groupBarLayout->addWidget(m_availability, 1, 1);
+    m_availability = m_piecesAvailability;
     m_availability->hide();
     m_ui->labelPiecesAvailability->hide();
     m_ui->labelAverageAvailabilityVal->hide();
-    m_speed = new SpeedWidget(static_cast<QWidget *>(this));
+    m_speed = static_cast<SpeedWidget *>(m_speedWidget);
     m_speed->setObjectName(u"remoteSpeedWidget"_s);
-    // The API reports payload rates, not protocol overhead, DHT or tracker rates.
     std::array<bool, 10> available {};
     available[2] = available[3] = true;
     m_speed->setAvailableGraphs(available);
-    m_ui->speedLayout->addWidget(m_speed);
-
-    m_trackers = new TrackerListView(this);
+    m_trackers = m_trackerList;
     m_trackers->setObjectName(u"remoteTrackers"_s);
     m_trackers->setHeaderSettingsKey(u"remote/trackerHeader"_s);
-    m_ui->hBoxLayoutTrackers->insertWidget(0, m_trackers);
-    m_ui->trackerUpButton->setIcon(QIcon(u":/icons/go-up.svg"_s));
-    m_ui->trackerDownButton->setIcon(QIcon(u":/icons/go-down.svg"_s));
-    m_ui->trackerUpButton->setEnabled(false);
-    m_ui->trackerDownButton->setEnabled(false);
-    m_peers = new PeerListView(this);
+    m_peers = m_peerList;
     m_peers->setObjectName(u"remotePeers"_s);
     m_peers->setHeaderSettingsKey(u"remote/peerHeader"_s);
-    m_ui->vBoxLayoutPeerPage->addWidget(m_peers);
     m_files = m_ui->filesList->sourceModel();
     m_ui->filesList->setObjectName(u"remoteContent"_s);
     m_ui->filesList->setHeaderSettingsKey(u"remote/contentHeader"_s);
     m_ui->filesList->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_ui->selectAllButton->setEnabled(false);
     m_ui->selectNoneButton->setEnabled(false);
-    m_tabs = new PropTabBar;
-    m_tabs->setContentsMargins(0, 5, 0, 5);
-    m_ui->verticalLayout->addLayout(m_tabs);
+    m_tabs = m_tabBar;
     connect(m_tabs, &PropTabBar::tabChanged, this, [this](const int index)
     {
-        m_ui->stackedProperties->setCurrentIndex(index);
         QSettings().setValue(u"remote/propertiesTab"_s, index);
         emit currentChanged(index);
     });
-    connect(m_tabs, &PropTabBar::visibilityToggled, m_ui->stackedProperties, &QWidget::setVisible);
+    connect(m_contentFilterLine, &LineEdit::textUpdated, this, [this](const QString &text)
+    {
+        auto *filter = static_cast<QSortFilterProxyModel *>(m_ui->filesList->model());
+        filter->setRecursiveFilteringEnabled(true);
+        filter->setFilterCaseSensitivity(Qt::CaseInsensitive);
+        filter->setFilterFixedString(text);
+    });
     const int savedTab = QSettings().value(u"remote/propertiesTab"_s, 0).toInt();
     m_tabs->setCurrentIndex((savedTab >= 0 && savedTab <= 5) ? savedTab : 0);
     clear();

@@ -36,6 +36,8 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include "transferlistfilterswidgetitem.h"
+#ifndef QBT_REMOTE_CLIENT
 #include "base/bittorrent/session.h"
 #include "base/global.h"
 #include "base/preferences.h"
@@ -53,16 +55,8 @@ TransferListFiltersWidget::TransferListFiltersWidget(QWidget *parent, TransferLi
     : QWidget(parent)
     , m_transferList {transferList}
 {
-    setBackgroundRole(QPalette::Base);
-
     Preferences *const pref = Preferences::instance();
-
-    // Construct lists
-    auto *mainWidget = new QWidget;
-    auto *mainWidgetLayout = new QVBoxLayout(mainWidget);
-    mainWidgetLayout->setContentsMargins(0, 2, 0, 0);
-    mainWidgetLayout->setSpacing(2);
-    mainWidgetLayout->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    auto *mainWidgetLayout = createContainer();
 
     {
         auto *statusFilterWidget = new StatusFilterWidget(this, transferList);
@@ -129,16 +123,6 @@ TransferListFiltersWidget::TransferListFiltersWidget(QWidget *parent, TransferLi
         mainWidgetLayout->addWidget(item);
     }
 
-    auto *scroll = new QScrollArea(this);
-    scroll->setWidgetResizable(true);
-    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setWidget(mainWidget);
-
-    auto *vLayout = new QVBoxLayout(this);
-    vLayout->setContentsMargins(0, 0, 0, 0);
-    vLayout->addWidget(scroll);
-
     const auto createTrackerStatusItem = [this, mainWidgetLayout, trackerStatusItemPos, pref]
     {
         auto *trackerStatusFilterWidget = new TrackerStatusFilterWidget(this, m_transferList);
@@ -177,4 +161,44 @@ TransferListFiltersWidget::TransferListFiltersWidget(QWidget *parent, TransferLi
 void TransferListFiltersWidget::setDownloadTrackerFavicon(bool value)
 {
     m_trackersFilterWidget->setDownloadTrackerFavicon(value);
+}
+
+#endif
+
+QVBoxLayout *TransferListFiltersWidget::createContainer()
+{
+    setBackgroundRole(QPalette::Base);
+
+    // Construct lists
+    auto *mainWidget = new QWidget;
+    auto *mainWidgetLayout = new QVBoxLayout(mainWidget);
+    mainWidgetLayout->setContentsMargins(0, 2, 0, 0);
+    mainWidgetLayout->setSpacing(2);
+    mainWidgetLayout->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+
+    auto *scroll = new QScrollArea(this);
+    scroll->setWidgetResizable(true);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidget(mainWidget);
+
+    auto *vLayout = new QVBoxLayout(this);
+    vLayout->setContentsMargins(0, 0, 0, 0);
+    vLayout->addWidget(scroll);
+
+    m_filterLayout = mainWidgetLayout;
+    return mainWidgetLayout;
+}
+
+TransferListFiltersWidget::TransferListFiltersWidget(QWidget *parent) : QWidget(parent)
+{
+    createContainer();
+}
+
+TransferListFiltersWidgetItem *TransferListFiltersWidget::appendFilter(const QString &title, QWidget *filter)
+{
+    auto *item = new TransferListFiltersWidgetItem(title, filter, this);
+    item->setChecked(true);
+    m_filterLayout->addWidget(item);
+    return item;
 }

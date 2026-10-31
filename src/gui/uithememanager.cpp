@@ -38,10 +38,18 @@
 #include <QStyleHints>
 
 #include "base/global.h"
-#include "base/logger.h"
 #include "base/path.h"
+#include "base/uidefaults.h"
+#ifndef QBT_REMOTE_CLIENT
+#include "base/logger.h"
 #include "base/profile.h"
 #include "base/preferences.h"
+#else
+#include <QDebug>
+#include <QSettings>
+#include <QStandardPaths>
+#define LogMsg(message, ...) qWarning().noquote() << message
+#endif
 #include "uithemecommon.h"
 
 namespace
@@ -55,7 +63,11 @@ namespace
 
     Path resolveThemePath(const Path &themePath)
     {
+#ifndef QBT_REMOTE_CLIENT
         return (themePath.isAbsolute() ? themePath : (Profile::instance()->location(SpecialFolder::Config) / themePath));
+#else
+        return themePath.isAbsolute() ? themePath : Path(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation)) / themePath;
+#endif
     }
 }
 
@@ -74,15 +86,30 @@ void UIThemeManager::initInstance()
 }
 
 UIThemeManager::UIThemeManager()
+#ifndef QBT_REMOTE_CLIENT
     : m_useCustomTheme {Preferences::instance()->useCustomUITheme()}
+#else
+    : m_useCustomTheme {!QSettings().value(u"remote/theme"_s).toString().isEmpty()}
+#endif
 #ifdef QBT_HAS_COLORSCHEME_OPTION
+#ifndef QBT_REMOTE_CLIENT
     , m_colorSchemeSetting {u"Appearance/ColorScheme"_s}
 #endif
+#endif
 #if (defined(Q_OS_UNIX) && !defined(Q_OS_MACOS))
+#ifndef QBT_REMOTE_CLIENT
     , m_useSystemIcons {Preferences::instance()->useSystemIcons()}
+#else
+    , m_useSystemIcons {false}
+#endif
 #endif
 {
-    if (const QString styleName = Preferences::instance()->getStyle(); styleName.compare(u"system", Qt::CaseInsensitive) != 0)
+#ifndef QBT_REMOTE_CLIENT
+    const QString styleName = Preferences::instance()->getStyle();
+#else
+    const QString styleName = QSettings().value(u"remote/style"_s, Defaults::GUI::styleName()).toString();
+#endif
+    if (styleName.compare(u"system", Qt::CaseInsensitive) != 0)
     {
         if (!QApplication::setStyle(styleName))
             LogMsg(tr("Set app style failed. Unknown style: \"%1\"").arg(styleName), Log::WARNING);
@@ -97,7 +124,11 @@ UIThemeManager::UIThemeManager()
 
     if (m_useCustomTheme)
     {
+#ifndef QBT_REMOTE_CLIENT
         const Path themePath = resolveThemePath(Preferences::instance()->customUIThemePath());
+#else
+        const Path themePath = resolveThemePath(Path(QSettings().value(u"remote/theme"_s).toString()));
+#endif
 
         if (themePath.hasExtension(u".qbtheme"_s))
         {
@@ -130,7 +161,11 @@ UIThemeManager *UIThemeManager::instance()
 #ifdef QBT_HAS_COLORSCHEME_OPTION
 ColorScheme UIThemeManager::colorScheme() const
 {
+#ifndef QBT_REMOTE_CLIENT
     return m_colorSchemeSetting.get(ColorScheme::System);
+#else
+    return m_colorScheme;
+#endif
 }
 
 void UIThemeManager::setColorScheme(const ColorScheme value)
@@ -138,7 +173,12 @@ void UIThemeManager::setColorScheme(const ColorScheme value)
     if (value == colorScheme())
         return;
 
+#ifndef QBT_REMOTE_CLIENT
     m_colorSchemeSetting = value;
+#else
+    m_colorScheme = value;
+    applyColorScheme();
+#endif
 }
 
 void UIThemeManager::applyColorScheme() const

@@ -29,6 +29,8 @@
 
 #include "peerlistwidget.h"
 
+#ifndef QBT_REMOTE_CLIENT
+
 #include <algorithm>
 
 #include <QApplication>
@@ -556,3 +558,7 @@ void PeerListWidget::wheelEvent(QWheelEvent *event)
 
     QTreeView::wheelEvent(event);  // event delegated to base class
 }
+
+#else
+PeerListWidget::PeerListWidget(QWidget *parent) : PeerListView(parent) {}
+#endif

@@ -2,7 +2,9 @@
 #pragma once
 
 #include <QJsonObject>
-#include <QScrollArea>
+#include "gui/transferlistfilterswidget.h"
+class QTreeView;
+class QStandardItemModel;
 #include <QSet>
 
 class QListWidget;
@@ -11,7 +13,7 @@ class TransferListFiltersWidgetItem;
 namespace Remote
 {
     class TorrentModel;
-    class Sidebar final : public QScrollArea
+    class Sidebar final : public TransferListFiltersWidget
     {
         Q_OBJECT
     public:
@@ -25,8 +27,8 @@ namespace Remote
         void filtersChanged();
     private:
         QListWidget *m_status = nullptr;
-        QListWidget *m_categories = nullptr;
-        QListWidget *m_tags = nullptr;
+        QTreeView *m_categories = nullptr;
+        QTreeView *m_tags = nullptr;
         QListWidget *m_trackers = nullptr;
         QList<TransferListFiltersWidgetItem *> m_sections;
     };

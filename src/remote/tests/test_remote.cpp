@@ -21,6 +21,22 @@
 #include <QStandardItemModel>
 #include <QAbstractItemView>
 #include <QTemporaryDir>
+#include <QCheckBox>
+#include <QTextEdit>
+#include <QStyle>
+#include "gui/transferlistwidget.h"
+#include "gui/transferlistdelegate.h"
+#include "gui/properties/peerlistwidget.h"
+#include "gui/trackerlist/trackerlistwidget.h"
+#include "gui/torrentcontentwidget.h"
+#include "gui/transferlistfilterswidget.h"
+#include "gui/transferlistfilters/statusfilterwidget.h"
+#include "gui/transferlistfilters/categoryfilterwidget.h"
+#include "gui/transferlistfilters/tagfilterwidget.h"
+#include "gui/statusbar.h"
+#include "gui/lineedit.h"
+#include "gui/downloadfromurldialog.h"
+#include "gui/deletionconfirmationdialog.h"
 #include <QSettings>
 
 #include "client.h"
@@ -489,6 +505,55 @@ private slots:
         QCoreApplication::removeTranslator(&translator);
     }
 #endif
+
+    void canonicalWidgetsAndNativeModelRoles()
+    {
+        Window window;
+        QVERIFY(qobject_cast<MainWindow *>(&window));
+        auto *table = window.findChild<TransferListWidget *>(u"remoteTorrentTable"_s);
+        QVERIFY(table);
+        QVERIFY(qobject_cast<TransferListDelegate *>(table->itemDelegate()));
+        QVERIFY(window.findChild<StatusBar *>());
+        QVERIFY(window.findChild<LineEdit *>());
+        auto *panel = window.findChild<PropertiesWidget *>(u"remoteProperties"_s);
+        QVERIFY(panel);
+        QVERIFY(panel->findChild<PeerListWidget *>());
+        QVERIFY(panel->findChild<TrackerListWidget *>());
+        QVERIFY(panel->findChild<TorrentContentWidget *>());
+        auto *sidebar = window.findChild<TransferListFiltersWidget *>(u"remoteSidebar"_s);
+        QVERIFY(sidebar);
+        auto *status = sidebar->findChild<StatusFilterWidget *>();
+        QCOMPARE(status->count(), 14);
+        QVERIFY(sidebar->findChild<CategoryFilterWidget *>()->currentIndex().data(Qt::UserRole).isNull());
+        QVERIFY(sidebar->findChild<TagFilterWidget *>()->currentIndex().data(Qt::UserRole).isNull());
+        TorrentModel model;
+        model.applySync(QJsonObject {{u"full_update"_s, true}, {u"torrents"_s, QJsonObject {
+            {u"a"_s, QJsonObject {{u"progress"_s, 0.42}, {u"state"_s, u"stoppedDL"_s}}}}}});
+        QCOMPARE(model.index(0, 4).data(Qt::UserRole).toDouble(), 42.0);
+        QCOMPARE(model.index(0, 5).data(Qt::UserRole).value<BitTorrent::TorrentState>(), BitTorrent::TorrentState::StoppedDownloading);
+#ifdef Q_OS_WIN
+        QCOMPARE(QApplication::style()->objectName().toLower(), u"fusion"_s);
+#endif
+    }
+
+    void originalUrlAndRemovalDialogs()
+    {
+        DownloadFromURLDialog urls(nullptr);
+        auto *input = urls.findChild<QTextEdit *>(u"textUrls"_s);
+        QVERIFY(input);
+        input->setPlainText(u" https://example.test/a.torrent\nhttps://example.test/a.torrent\nmagnet:?xt=urn:btih:example\n"_s);
+        QSignalSpy requested(&urls, &DownloadFromURLDialog::urlsReadyToBeDownloaded);
+        QVERIFY(QMetaObject::invokeMethod(&urls, "onSubmit"));
+        QCOMPARE(requested.size(), 1);
+        QCOMPARE(requested.first().first().toStringList(), (QStringList {u"https://example.test/a.torrent"_s, u"magnet:?xt=urn:btih:example"_s}));
+        QCOMPARE(urls.result(), int(QDialog::Accepted));
+        DeletionConfirmationDialog removal(nullptr, 1, u"Example torrent"_s, false);
+        QVERIFY(!removal.isRemoveContentSelected());
+        auto *check = removal.findChild<QCheckBox *>(u"checkRemoveContent"_s);
+        QVERIFY(check);
+        check->setChecked(true);
+        QVERIFY(removal.isRemoveContentSelected());
+    }
 
     void nativeWindowStartsDisconnected()
     {

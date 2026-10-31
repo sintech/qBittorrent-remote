@@ -3,6 +3,13 @@
 
 #include <QCoreApplication>
 #include <QListWidget>
+#include <QTreeView>
+#include <QStandardItemModel>
+#include "gui/transferlistfilters/basefilterwidget.h"
+#include "gui/transferlistfilters/statusfilterwidget.h"
+#include "gui/transferlistfilters/categoryfilterwidget.h"
+#include "gui/transferlistfilters/tagfilterwidget.h"
+#include "gui/uithememanager.h"
 #include <QSignalBlocker>
 #include <QUrl>
 #include <QStyle>
@@ -16,19 +23,14 @@ using namespace Remote;
 
 namespace
 {
-    class FilterList final : public QListWidget
-    {
-    public:
-        using QListWidget::QListWidget;
-        QSize sizeHint() const override
-        {
-            return {sizeHintForColumn(0), int((count() + 0.5) * qMax(1, sizeHintForRow(0)))};
-        }
-    };
-
     QString selection(const QListWidget *list)
     {
         return list->currentItem() ? list->currentItem()->data(Qt::UserRole).toString() : QString();
+    }
+
+    QString selection(const QTreeView *tree)
+    {
+        return tree->currentIndex().data(Qt::UserRole).toString();
     }
 
     QString caption(const QString &source, const QString &count)
@@ -38,43 +40,26 @@ namespace
 }
 
 Sidebar::Sidebar(QWidget *parent)
-    : QScrollArea(parent)
+    : TransferListFiltersWidget(parent)
 {
     setObjectName(u"remoteSidebar"_s);
-    setWidgetResizable(true);
-    setFrameShape(QFrame::NoFrame);
-    setMinimumWidth(150);
-    auto *container = new QWidget(this);
-    container->setBackgroundRole(QPalette::Base);
-    container->setAutoFillBackground(true);
-    auto *layout = new QVBoxLayout(container);
-    layout->setContentsMargins(0, 2, 0, 0);
-    layout->setSpacing(2);
-    layout->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-    const QList<QPair<const char *, QListWidget **>> sections {
-        {"Status", &m_status}, {"Categories", &m_categories}, {"Tags", &m_tags}, {"Trackers", &m_trackers}};
-    for (const auto &entry : sections)
+    m_status = new StatusFilterWidget(this, nullptr);
+    m_categories = new CategoryFilterWidget(this, new QStandardItemModel(this));
+    m_tags = new TagFilterWidget(this, new QStandardItemModel(this));
+    m_trackers = new BaseFilterWidget(this, nullptr);
+    const QList<QPair<const char *, QWidget *>> filters {
+        {"Status", m_status}, {"Categories", m_categories}, {"Tags", m_tags}, {"Trackers", m_trackers}};
+    for (const auto &entry : filters)
     {
-        auto *list = new FilterList(container);
-        *entry.second = list;
-        list->setFrameShape(QFrame::NoFrame);
-        list->setUniformItemSizes(true);
-        list->setSpacing(0);
-        const int iconSize = style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, list);
-        list->setIconSize(QSize(iconSize, iconSize));
-        list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        list->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        list->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        list->setMinimumWidth(145);
-        auto *section = new TransferListFiltersWidgetItem(QCoreApplication::translate("TransferListFiltersWidget", entry.first), list, container);
-        section->setChecked(true);
+        auto *section = appendFilter(QCoreApplication::translate("TransferListFiltersWidget", entry.first), entry.second);
         m_sections.append(section);
-        layout->addWidget(section);
-        connect(list, &QListWidget::currentRowChanged, this, [this] { emit filtersChanged(); });
         connect(section, &TransferListFiltersWidgetItem::toggled, this, [this] { emit filtersChanged(); });
     }
+    for (auto *list : {m_status, m_trackers})
+        connect(list, &QListWidget::currentRowChanged, this, [this] { emit filtersChanged(); });
+    for (auto *tree : {m_categories, m_tags})
+        connect(tree->selectionModel(), &QItemSelectionModel::currentChanged, this, [this] { emit filtersChanged(); });
     m_status->setObjectName(u"remoteStatusFilter"_s);
-    setWidget(container);
 }
 
 QString Sidebar::state() const { return m_sections[0]->isChecked() ? selection(m_status) : QString(); }
@@ -90,19 +75,13 @@ void Sidebar::updateData(const TorrentModel &model, const QJsonObject &categorie
         {"Seeding", u"seeding", u"upload"}, {"Completed", u"completed", u"checked-completed"},
         {"Running", u"running", u"torrent-start"}, {"Stopped", u"stopped", u"stopped"},
         {"Active", u"active", u"filter-active"}, {"Inactive", u"inactive", u"filter-inactive"},
-        {"Stalled", u"stalled", u"filter-stalled"}, {"Checking", u"checking", u"force-recheck"},
+        {"Stalled", u"stalled", u"filter-stalled"}, {"Stalled Uploading", u"stalledUP", u"stalledUP"},
+        {"Stalled Downloading", u"stalledDL", u"stalledDL"}, {"Checking", u"checking", u"force-recheck"},
         {"Moving", u"moving", u"set-location"}, {"Errored", u"errored", u"error"}
     };
     const QSignalBlocker statusBlocker(m_status);
-    if (m_status->count() == 0)
-    {
-        for (const auto &state : states)
-        {
-            auto *item = new QListWidgetItem(QIcon(u":/icons/"_s + QString::fromUtf16(state.icon) + u".svg"), {}, m_status);
-            item->setData(Qt::UserRole, QString::fromUtf16(state.value));
-        }
-        m_status->setCurrentRow(0);
-    }
+    for (int i = 0; i < int(std::size(states)); ++i)
+        m_status->item(i)->setData(Qt::UserRole, QString::fromUtf16(states[i].value));
     for (int index = 0; index < int(std::size(states)); ++index)
     {
         int count = 0;
@@ -120,6 +99,7 @@ void Sidebar::updateData(const TorrentModel &model, const QJsonObject &categorie
     {
         const auto torrent = model.torrentAt(row);
         ++categoryCounts[torrent.value(u"category"_s).toString()];
+        if (torrent.value(u"tags"_s).toString().isEmpty()) ++tagCounts[u""_s];
         for (const auto &tag : torrent.value(u"tags"_s).toString().split(u", "_s, Qt::SkipEmptyParts))
             ++tagCounts[tag];
         const QString host = QUrl(torrent.value(u"tracker"_s).toString()).host();
@@ -142,7 +122,7 @@ void Sidebar::updateData(const TorrentModel &model, const QJsonObject &categorie
         {
             auto *item = new QListWidgetItem(caption(value, QString::number(counts.value(value))), list);
             item->setData(Qt::UserRole, value);
-            item->setIcon(QIcon(list == m_categories ? u":/icons/directory.svg"_s : u":/icons/network-server.svg"_s));
+            item->setIcon(UIThemeManager::instance()->getIcon(u"trackers"_s, u"network-server"_s));
         }
         list->setCurrentRow(0);
         if (!selected.isNull())
@@ -155,10 +135,37 @@ void Sidebar::updateData(const TorrentModel &model, const QJsonObject &categorie
         }
         list->setFixedHeight(list->sizeHint().height());
     };
-    updateList(m_categories, categories.keys(), categoryCounts, "CategoryFilterWidget", "Uncategorized (%1)");
+    const auto updateTree = [this, &model](QTreeView *tree, const QStringList &values, const QHash<QString, int> &counts, const char *context, const char *emptyName)
+    {
+        const QString previous = selection(tree);
+        const QSignalBlocker blocker(tree->selectionModel());
+        auto *data = static_cast<QStandardItemModel *>(tree->model());
+        data->clear();
+        auto *all = new QStandardItem(UIThemeManager::instance()->getIcon(u"filter-all"_s), QCoreApplication::translate(context, "All (%1)").arg(model.rowCount()));
+        data->appendRow(all);
+        if (emptyName)
+        {
+            auto *empty = new QStandardItem(QCoreApplication::translate(context, emptyName).arg(counts.value(u""_s)));
+            empty->setData(u""_s, Qt::UserRole);
+            data->appendRow(empty);
+        }
+        for (const auto &value : values)
+        {
+            auto *row = new QStandardItem(UIThemeManager::instance()->getIcon(tree == m_categories ? u"directory"_s : u"tag"_s), caption(value, QString::number(counts.value(value))));
+            row->setData(value, Qt::UserRole);
+            row->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+            data->appendRow(row);
+        }
+        tree->setCurrentIndex(data->index(0, 0));
+        for (int row = 1; !previous.isNull() && row < data->rowCount(); ++row)
+            if (data->index(row, 0).data(Qt::UserRole).toString() == previous)
+                tree->setCurrentIndex(data->index(row, 0));
+        tree->updateGeometry();
+    };
+    updateTree(m_categories, categories.keys(), categoryCounts, "CategoryFilterWidget", "Uncategorized (%1)");
     auto tagNames = tags.values();
     tagNames.sort();
-    updateList(m_tags, tagNames, tagCounts, "TagFilterWidget", nullptr);
+    updateTree(m_tags, tagNames, tagCounts, "TagFilterWidget", "Untagged (%1)");
     auto trackerNames = trackerCounts.keys();
     trackerNames.sort();
     updateList(m_trackers, trackerNames, trackerCounts, "TrackersFilterWidget", nullptr);

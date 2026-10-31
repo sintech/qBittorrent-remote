@@ -77,6 +77,7 @@ public:
 
     explicit TorrentContentWidget(QWidget *parent = nullptr);
 
+#ifndef QBT_REMOTE_CLIENT
     void setContentHandler(BitTorrent::TorrentContentHandler *contentHandler);
     BitTorrent::TorrentContentHandler *contentHandler() const;
     void refresh();
@@ -133,4 +134,5 @@ private:
 
     bool m_contentDragAllowed = false;
     bool m_contentDragEnabled = false;
+#endif
 };

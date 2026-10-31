@@ -29,6 +29,8 @@
 
 #include "torrentcontentwidget.h"
 
+#ifndef QBT_REMOTE_CLIENT
+
 #include <QDir>
 #include <QHeaderView>
 #include <QKeyEvent>
@@ -546,3 +548,7 @@ void TorrentContentWidget::wheelEvent(QWheelEvent *event)
 
     QTreeView::wheelEvent(event);  // event delegated to base class
 }
+
+#else
+TorrentContentWidget::TorrentContentWidget(QWidget *parent) : TorrentContentView(parent) {}
+#endif

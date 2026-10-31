@@ -237,6 +237,7 @@ add_library(qbt_gui STATIC
     transferlistfilters/trackerstatusfilterwidget.cpp
     transferlistfilterswidget.cpp
     transferlistfilterswidgetitem.cpp
+    transferlistmodelpresentation.cpp
     transferlistmodel.cpp
     transferlistsortmodel.cpp
     transferlistwidget.cpp
@@ -245,6 +246,7 @@ add_library(qbt_gui STATIC
     uithemedialog.cpp
     uithememanager.cpp
     uithemesource.cpp
+    iconsizes.cpp
     utils.cpp
     utils/keysequence.cpp
     watchedfolderoptionsdialog.cpp

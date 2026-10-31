@@ -32,12 +32,17 @@
 #include <QListWidgetItem>
 #include <QMenu>
 
+#include "base/global.h"
+#include "gui/uithememanager.h"
+#ifndef QBT_REMOTE_CLIENT
 #include "base/bittorrent/session.h"
 #include "base/global.h"
 #include "base/preferences.h"
 #include "base/torrentfilter.h"
 #include "gui/transferlistwidget.h"
 #include "gui/uithememanager.h"
+
+#endif
 
 StatusFilterWidget::StatusFilterWidget(QWidget *parent, TransferListWidget *transferList)
     : BaseFilterWidget(parent, transferList)
@@ -86,6 +91,7 @@ StatusFilterWidget::StatusFilterWidget(QWidget *parent, TransferListWidget *tran
     errored->setData(Qt::DisplayRole, tr("Errored (0)"));
     errored->setData(Qt::DecorationRole, UIThemeManager::instance()->getIcon(u"error"_s));
 
+#ifndef QBT_REMOTE_CLIENT
     const QList<BitTorrent::Torrent *> torrents = BitTorrent::Session::instance()->torrents();
     update(torrents);
     connect(BitTorrent::Session::instance(), &BitTorrent::Session::torrentsUpdated
@@ -99,27 +105,15 @@ StatusFilterWidget::StatusFilterWidget(QWidget *parent, TransferListWidget *tran
         setCurrentRow(TorrentFilter::All, QItemSelectionModel::SelectCurrent);
     else
         setCurrentRow(storedRow, QItemSelectionModel::SelectCurrent);
+#else
+    setCurrentRow(0);
+#endif
 }
 
+#ifndef QBT_REMOTE_CLIENT
 StatusFilterWidget::~StatusFilterWidget()
 {
     Preferences::instance()->setTransSelFilter(currentRow());
-}
-
-QSize StatusFilterWidget::sizeHint() const
-{
-    int numVisibleItems = 0;
-    for (int i = 0; i < count(); ++i)
-    {
-        if (!item(i)->isHidden())
-            ++numVisibleItems;
-    }
-
-    return {
-        // Width should be exactly the width of the content
-        sizeHintForColumn(0),
-        // Height should be exactly the height of the content
-        static_cast<int>((sizeHintForRow(0) + 2 * spacing()) * (numVisibleItems + 0.5))};
 }
 
 void StatusFilterWidget::updateTorrentStatus(const BitTorrent::Torrent *torrent)
@@ -289,4 +283,22 @@ void StatusFilterWidget::configure()
     }
 
     updateGeometry();
+}
+
+#endif
+
+QSize StatusFilterWidget::sizeHint() const
+{
+    int numVisibleItems = 0;
+    for (int i = 0; i < count(); ++i)
+    {
+        if (!item(i)->isHidden())
+            ++numVisibleItems;
+    }
+
+    return {
+        // Width should be exactly the width of the content
+        sizeHintForColumn(0),
+        // Height should be exactly the height of the content
+        static_cast<int>((sizeHintForRow(0) + 2 * spacing()) * (numVisibleItems + 0.5))};
 }

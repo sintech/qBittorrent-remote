@@ -29,6 +29,7 @@
 #pragma once
 
 #include <QStatusBar>
+#include <QString>
 
 class QLabel;
 class QPushButton;
@@ -46,6 +47,16 @@ class StatusBar final : public QStatusBar
 public:
     StatusBar(QWidget *parent = nullptr);
     ~StatusBar() override;
+
+    struct Snapshot
+    {
+        bool listening = false, incoming = false, dhtEnabled = true, alternative = false;
+        int dhtNodes = 0, downloadLimit = 0, uploadLimit = 0;
+        qint64 freeSpace = -1, downloadRate = 0, uploadRate = 0, downloaded = 0, uploaded = 0;
+        QString externalIPv4, externalIPv6;
+    };
+    void setSnapshot(const Snapshot &snapshot);
+    void setConnectionMessage(const QString &message);
 
 signals:
     void alternativeSpeedsButtonClicked();
@@ -69,6 +80,7 @@ private:
     void updateExternalAddressesVisibility();
     void updateSpeedLabels();
 
+    Snapshot m_snapshot;
     QPushButton *m_dlSpeedLbl = nullptr;
     QPushButton *m_upSpeedLbl = nullptr;
     QLabel *m_freeDiskSpaceLbl = nullptr;

@@ -49,7 +49,8 @@ LineEdit::LineEdit(QWidget *parent)
     : QLineEdit(parent)
     , m_delayedTextChangedTimer {new QTimer(this)}
 {
-    auto *action = new QAction(UIThemeManager::instance()->getIcon(u"edit-find"_s), QString(), this);
+    const auto icon = UIThemeManager::instance()->getIcon(u"edit-find"_s);
+    auto *action = new QAction(icon, QString(), this);
     addAction(action, QLineEdit::LeadingPosition);
 
     setClearButtonEnabled(true);

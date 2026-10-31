@@ -29,6 +29,12 @@
 
 #include "transferlistwidget.h"
 
+#include <QHeaderView>
+#include <QMenu>
+#include "uithememanager.h"
+#include "transferlistdelegate.h"
+#ifndef QBT_REMOTE_CLIENT
+
 #include <algorithm>
 
 #include <QClipboard>
@@ -133,75 +139,7 @@ TransferListWidget::TransferListWidget(IGUIApplication *app, QWidget *parent)
     m_sortFilterModel->setSortRole(TransferListModel::UnderlyingDataRole);
     setModel(m_sortFilterModel);
 
-    // Visual settings
-    setUniformRowHeights(true);
-    setRootIsDecorated(false);
-    setAllColumnsShowFocus(true);
-    setSortingEnabled(true);
-    setSelectionMode(QAbstractItemView::ExtendedSelection);
-    setItemsExpandable(false);
-    setAutoScroll(true);
-    setAcceptDrops(true);
-    setDragDropMode(QAbstractItemView::DropOnly);
-    setDropIndicatorShown(true);
-#if defined(Q_OS_MACOS)
-    setAttribute(Qt::WA_MacShowFocusRect, false);
-    new MacOSShiftClickHandler(this);
-#endif
-    header()->setFirstSectionMovable(true);
-    header()->setStretchLastSection(false);
-    header()->setTextElideMode(Qt::ElideRight);
-
-    // Default hidden columns
-    if (!columnLoaded)
-    {
-        setColumnHidden(TransferListModel::TR_CREATE_DATE, true);
-        setColumnHidden(TransferListModel::TR_ADD_DATE, true);
-        setColumnHidden(TransferListModel::TR_SEED_DATE, true);
-        setColumnHidden(TransferListModel::TR_UPLIMIT, true);
-        setColumnHidden(TransferListModel::TR_DLLIMIT, true);
-        setColumnHidden(TransferListModel::TR_TRACKER, true);
-        setColumnHidden(TransferListModel::TR_AMOUNT_DOWNLOADED, true);
-        setColumnHidden(TransferListModel::TR_AMOUNT_UPLOADED, true);
-        setColumnHidden(TransferListModel::TR_AMOUNT_DOWNLOADED_SESSION, true);
-        setColumnHidden(TransferListModel::TR_AMOUNT_UPLOADED_SESSION, true);
-        setColumnHidden(TransferListModel::TR_AMOUNT_LEFT, true);
-        setColumnHidden(TransferListModel::TR_TIME_ELAPSED, true);
-        setColumnHidden(TransferListModel::TR_SAVE_PATH, true);
-        setColumnHidden(TransferListModel::TR_DOWNLOAD_PATH, true);
-        setColumnHidden(TransferListModel::TR_INFOHASH_V1, true);
-        setColumnHidden(TransferListModel::TR_INFOHASH_V2, true);
-        setColumnHidden(TransferListModel::TR_COMPLETED, true);
-        setColumnHidden(TransferListModel::TR_RATIO_LIMIT, true);
-        setColumnHidden(TransferListModel::TR_POPULARITY, true);
-        setColumnHidden(TransferListModel::TR_SEEN_COMPLETE_DATE, true);
-        setColumnHidden(TransferListModel::TR_LAST_ACTIVITY, true);
-        setColumnHidden(TransferListModel::TR_TOTAL_SIZE, true);
-        setColumnHidden(TransferListModel::TR_REANNOUNCE, true);
-        setColumnHidden(TransferListModel::TR_PRIVATE, true);
-    }
-
-    //Ensure that at least one column is visible at all times
-    bool atLeastOne = false;
-    for (int i = 0; i < TransferListModel::NB_COLUMNS; ++i)
-    {
-        if (!isColumnHidden(i))
-        {
-            atLeastOne = true;
-            break;
-        }
-    }
-    if (!atLeastOne)
-        setColumnHidden(TransferListModel::TR_NAME, false);
-
-    //When adding/removing columns between versions some may
-    //end up being size 0 when the new version is launched with
-    //a conf file from the previous version.
-    for (int i = 0; i < TransferListModel::NB_COLUMNS; ++i)
-    {
-        if ((columnWidth(i) <= 0) && (!isColumnHidden(i)))
-            resizeColumnToContents(i);
-    }
+    configureView(columnLoaded);
 
     setContextMenuPolicy(Qt::CustomContextMenu);
 
@@ -669,66 +607,6 @@ void TransferListWidget::reannounceSelectedTorrents()
     }
 }
 
-int TransferListWidget::visibleColumnsCount() const
-{
-    int count = 0;
-    for (int i = 0, iMax = header()->count(); i < iMax; ++i)
-    {
-        if (!isColumnHidden(i))
-            ++count;
-    }
-
-    return count;
-}
-
-// hide/show columns menu
-void TransferListWidget::displayColumnHeaderMenu()
-{
-    auto *menu = new QMenu(this);
-    menu->setAttribute(Qt::WA_DeleteOnClose);
-    menu->setTitle(tr("Column visibility"));
-    menu->setToolTipsVisible(true);
-
-    for (int i = 0; i < TransferListModel::NB_COLUMNS; ++i)
-    {
-        if (!BitTorrent::Session::instance()->isQueueingSystemEnabled() && (i == TransferListModel::TR_QUEUE_POSITION))
-            continue;
-
-        const auto columnName = m_listModel->headerData(i, Qt::Horizontal, Qt::DisplayRole).toString();
-        const QVariant columnToolTip = m_listModel->headerData(i, Qt::Horizontal, Qt::ToolTipRole);
-        QAction *action = menu->addAction(columnName, this, [this, i](const bool checked)
-        {
-            if (!checked && (visibleColumnsCount() <= 1))
-                return;
-
-            setColumnHidden(i, !checked);
-
-            if (checked && (columnWidth(i) <= 5))
-                resizeColumnToContents(i);
-
-            saveSettings();
-        });
-        action->setCheckable(true);
-        action->setChecked(!isColumnHidden(i));
-        if (!columnToolTip.isNull())
-            action->setToolTip(columnToolTip.toString());
-    }
-
-    menu->addSeparator();
-    QAction *resizeAction = menu->addAction(tr("Resize columns"), this, [this]()
-    {
-        for (int i = 0, count = header()->count(); i < count; ++i)
-        {
-            if (!isColumnHidden(i))
-                resizeColumnToContents(i);
-        }
-        saveSettings();
-    });
-    resizeAction->setToolTip(tr("Resize all non-hidden columns to the size of their contents"));
-
-    menu->popup(QCursor::pos());
-}
-
 void TransferListWidget::setSelectedTorrentsSuperSeeding(const bool enabled) const
 {
     for (BitTorrent::Torrent *const torrent : asConst(getSelectedTorrents()))
@@ -975,13 +853,13 @@ void TransferListWidget::displayListMenu()
 
     // Create actions
 
-    auto *actionStart = new QAction(UIThemeManager::instance()->getIcon(u"torrent-start"_s, u"media-playback-start"_s), tr("&Start", "Resume/start the torrent"), listMenu);
+    auto *actionStart = createAction(Command::Start, listMenu);
     connect(actionStart, &QAction::triggered, this, &TransferListWidget::startSelectedTorrents);
-    auto *actionStop = new QAction(UIThemeManager::instance()->getIcon(u"torrent-stop"_s, u"media-playback-pause"_s), tr("Sto&p", "Stop the torrent"), listMenu);
+    auto *actionStop = createAction(Command::Stop, listMenu);
     connect(actionStop, &QAction::triggered, this, &TransferListWidget::stopSelectedTorrents);
-    auto *actionForceStart = new QAction(UIThemeManager::instance()->getIcon(u"torrent-start-forced"_s, u"media-playback-start"_s), tr("Force Star&t", "Force Resume/start the torrent"), listMenu);
+    auto *actionForceStart = createAction(Command::ForceStart, listMenu);
     connect(actionForceStart, &QAction::triggered, this, &TransferListWidget::forceStartSelectedTorrents);
-    auto *actionDelete = new QAction(UIThemeManager::instance()->getIcon(u"list-remove"_s), tr("&Remove", "Remove the torrent"), listMenu);
+    auto *actionDelete = createAction(Command::Remove, listMenu);
     connect(actionDelete, &QAction::triggered, this, &TransferListWidget::softDeleteSelectedTorrents);
     auto *actionPreviewFile = new QAction(UIThemeManager::instance()->getIcon(u"view-preview"_s), tr("Pre&view file..."), listMenu);
     connect(actionPreviewFile, &QAction::triggered, this, &TransferListWidget::previewSelectedTorrents);
@@ -989,19 +867,19 @@ void TransferListWidget::displayListMenu()
     connect(actionTorrentOptions, &QAction::triggered, this, &TransferListWidget::setTorrentOptions);
     auto *actionOpenDestinationFolder = new QAction(UIThemeManager::instance()->getIcon(u"directory"_s), tr("Open destination &folder"), listMenu);
     connect(actionOpenDestinationFolder, &QAction::triggered, this, &TransferListWidget::openSelectedTorrentsFolder);
-    auto *actionIncreaseQueuePos = new QAction(UIThemeManager::instance()->getIcon(u"go-up"_s), tr("Move &up", "i.e. move up in the queue"), listMenu);
+    auto *actionIncreaseQueuePos = createAction(Command::QueueUp, listMenu);
     connect(actionIncreaseQueuePos, &QAction::triggered, this, &TransferListWidget::increaseQueuePosSelectedTorrents);
-    auto *actionDecreaseQueuePos = new QAction(UIThemeManager::instance()->getIcon(u"go-down"_s), tr("Move &down", "i.e. Move down in the queue"), listMenu);
+    auto *actionDecreaseQueuePos = createAction(Command::QueueDown, listMenu);
     connect(actionDecreaseQueuePos, &QAction::triggered, this, &TransferListWidget::decreaseQueuePosSelectedTorrents);
-    auto *actionTopQueuePos = new QAction(UIThemeManager::instance()->getIcon(u"go-top"_s), tr("Move to &top", "i.e. Move to top of the queue"), listMenu);
+    auto *actionTopQueuePos = createAction(Command::QueueTop, listMenu);
     connect(actionTopQueuePos, &QAction::triggered, this, &TransferListWidget::topQueuePosSelectedTorrents);
-    auto *actionBottomQueuePos = new QAction(UIThemeManager::instance()->getIcon(u"go-bottom"_s), tr("Move to &bottom", "i.e. Move to bottom of the queue"), listMenu);
+    auto *actionBottomQueuePos = createAction(Command::QueueBottom, listMenu);
     connect(actionBottomQueuePos, &QAction::triggered, this, &TransferListWidget::bottomQueuePosSelectedTorrents);
     auto *actionSetTorrentPath = new QAction(UIThemeManager::instance()->getIcon(u"set-location"_s, u"inode-directory"_s), tr("Set loc&ation..."), listMenu);
     connect(actionSetTorrentPath, &QAction::triggered, this, &TransferListWidget::setSelectedTorrentsLocation);
-    auto *actionForceRecheck = new QAction(UIThemeManager::instance()->getIcon(u"force-recheck"_s, u"document-edit-verify"_s), tr("Force rec&heck"), listMenu);
+    auto *actionForceRecheck = createAction(Command::Recheck, listMenu);
     connect(actionForceRecheck, &QAction::triggered, this, &TransferListWidget::recheckSelectedTorrents);
-    auto *actionForceReannounce = new QAction(UIThemeManager::instance()->getIcon(u"reannounce"_s, u"document-edit-verify"_s), tr("Force r&eannounce"), listMenu);
+    auto *actionForceReannounce = createAction(Command::Reannounce, listMenu);
     connect(actionForceReannounce, &QAction::triggered, this, &TransferListWidget::reannounceSelectedTorrents);
     auto *actionCopyMagnetLink = new QAction(UIThemeManager::instance()->getIcon(u"torrent-magnet"_s, u"kt-magnet"_s), tr("&Magnet link"), listMenu);
     connect(actionCopyMagnetLink, &QAction::triggered, this, &TransferListWidget::copySelectedMagnetURIs);
@@ -1480,4 +1358,174 @@ void TransferListWidget::openPreviewSelectDialog(const BitTorrent::Torrent *torr
     // It occurs when the window focus shifts immediately after TransferListWidget::previewFile has been called.
     connect(dialog, &PreviewSelectDialog::readyToPreviewFile, this, &TransferListWidget::previewFile, Qt::QueuedConnection);
     dialog->show();
+}
+
+#endif
+
+void TransferListWidget::configureView(const bool columnLoaded)
+{
+    // Visual settings
+    setUniformRowHeights(true);
+    setRootIsDecorated(false);
+    setAllColumnsShowFocus(true);
+    setSortingEnabled(true);
+    setSelectionMode(QAbstractItemView::ExtendedSelection);
+    setItemsExpandable(false);
+    setAutoScroll(true);
+    setAcceptDrops(true);
+    setDragDropMode(QAbstractItemView::DropOnly);
+    setDropIndicatorShown(true);
+#if defined(Q_OS_MACOS) && !defined(QBT_REMOTE_CLIENT)
+    setAttribute(Qt::WA_MacShowFocusRect, false);
+    new MacOSShiftClickHandler(this);
+#endif
+    header()->setFirstSectionMovable(true);
+    header()->setStretchLastSection(false);
+    header()->setTextElideMode(Qt::ElideRight);
+
+    // Default hidden columns
+    if (!columnLoaded)
+    {
+        setColumnHidden(TransferListModel::TR_CREATE_DATE, true);
+        setColumnHidden(TransferListModel::TR_ADD_DATE, true);
+        setColumnHidden(TransferListModel::TR_SEED_DATE, true);
+        setColumnHidden(TransferListModel::TR_UPLIMIT, true);
+        setColumnHidden(TransferListModel::TR_DLLIMIT, true);
+        setColumnHidden(TransferListModel::TR_TRACKER, true);
+        setColumnHidden(TransferListModel::TR_AMOUNT_DOWNLOADED, true);
+        setColumnHidden(TransferListModel::TR_AMOUNT_UPLOADED, true);
+        setColumnHidden(TransferListModel::TR_AMOUNT_DOWNLOADED_SESSION, true);
+        setColumnHidden(TransferListModel::TR_AMOUNT_UPLOADED_SESSION, true);
+        setColumnHidden(TransferListModel::TR_AMOUNT_LEFT, true);
+        setColumnHidden(TransferListModel::TR_TIME_ELAPSED, true);
+        setColumnHidden(TransferListModel::TR_SAVE_PATH, true);
+        setColumnHidden(TransferListModel::TR_DOWNLOAD_PATH, true);
+        setColumnHidden(TransferListModel::TR_INFOHASH_V1, true);
+        setColumnHidden(TransferListModel::TR_INFOHASH_V2, true);
+        setColumnHidden(TransferListModel::TR_COMPLETED, true);
+        setColumnHidden(TransferListModel::TR_RATIO_LIMIT, true);
+        setColumnHidden(TransferListModel::TR_POPULARITY, true);
+        setColumnHidden(TransferListModel::TR_SEEN_COMPLETE_DATE, true);
+        setColumnHidden(TransferListModel::TR_LAST_ACTIVITY, true);
+        setColumnHidden(TransferListModel::TR_TOTAL_SIZE, true);
+        setColumnHidden(TransferListModel::TR_REANNOUNCE, true);
+        setColumnHidden(TransferListModel::TR_PRIVATE, true);
+    }
+
+    //Ensure that at least one column is visible at all times
+    bool atLeastOne = false;
+    for (int i = 0; i < TransferListModel::NB_COLUMNS; ++i)
+    {
+        if (!isColumnHidden(i))
+        {
+            atLeastOne = true;
+            break;
+        }
+    }
+    if (!atLeastOne)
+        setColumnHidden(TransferListModel::TR_NAME, false);
+
+    //When adding/removing columns between versions some may
+    //end up being size 0 when the new version is launched with
+    //a conf file from the previous version.
+    for (int i = 0; i < TransferListModel::NB_COLUMNS; ++i)
+    {
+        if ((columnWidth(i) <= 0) && (!isColumnHidden(i)))
+            resizeColumnToContents(i);
+    }
+
+}
+
+TransferListWidget::TransferListWidget(QAbstractItemModel *model, QWidget *parent)
+    : GUIApplicationComponent(nullptr, parent)
+{
+    setModel(model);
+    setItemDelegate(new TransferListDelegate(this));
+    configureView(false);
+    header()->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(header(), &QWidget::customContextMenuRequested, this, &TransferListWidget::displayColumnHeaderMenu);
+}
+
+QAction *TransferListWidget::createAction(const Command command, QObject *parent)
+{
+    switch (command)
+    {
+    case Command::Start: return new QAction(UIThemeManager::instance()->getIcon(u"torrent-start"_s, u"media-playback-start"_s), tr("&Start", "Resume/start the torrent"), parent);
+    case Command::Stop: return new QAction(UIThemeManager::instance()->getIcon(u"torrent-stop"_s, u"media-playback-pause"_s), tr("Sto&p", "Stop the torrent"), parent);
+    case Command::ForceStart: return new QAction(UIThemeManager::instance()->getIcon(u"torrent-start-forced"_s, u"media-playback-start"_s), tr("Force Star&t", "Force Resume/start the torrent"), parent);
+    case Command::Remove: return new QAction(UIThemeManager::instance()->getIcon(u"list-remove"_s), tr("&Remove", "Remove the torrent"), parent);
+    case Command::Recheck: return new QAction(UIThemeManager::instance()->getIcon(u"force-recheck"_s, u"document-edit-verify"_s), tr("Force rec&heck"), parent);
+    case Command::Reannounce: return new QAction(UIThemeManager::instance()->getIcon(u"reannounce"_s, u"document-edit-verify"_s), tr("Force r&eannounce"), parent);
+    case Command::QueueUp: return new QAction(UIThemeManager::instance()->getIcon(u"go-up"_s), tr("Move &up", "i.e. move up in the queue"), parent);
+    case Command::QueueDown: return new QAction(UIThemeManager::instance()->getIcon(u"go-down"_s), tr("Move &down", "i.e. Move down in the queue"), parent);
+    case Command::QueueTop: return new QAction(UIThemeManager::instance()->getIcon(u"go-top"_s), tr("Move to &top", "i.e. Move to top of the queue"), parent);
+    case Command::QueueBottom: return new QAction(UIThemeManager::instance()->getIcon(u"go-bottom"_s), tr("Move to &bottom", "i.e. Move to bottom of the queue"), parent);
+    }
+    Q_UNREACHABLE();
+}
+
+int TransferListWidget::visibleColumnsCount() const
+{
+    int count = 0;
+    for (int i = 0, iMax = header()->count(); i < iMax; ++i)
+    {
+        if (!isColumnHidden(i))
+            ++count;
+    }
+
+    return count;
+}
+
+// hide/show columns menu
+void TransferListWidget::displayColumnHeaderMenu()
+{
+    auto *menu = new QMenu(this);
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+    menu->setTitle(tr("Column visibility"));
+    menu->setToolTipsVisible(true);
+
+    for (int i = 0; i < TransferListModel::NB_COLUMNS; ++i)
+    {
+#ifndef QBT_REMOTE_CLIENT
+        if (!BitTorrent::Session::instance()->isQueueingSystemEnabled() && (i == TransferListModel::TR_QUEUE_POSITION))
+            continue;
+#endif
+
+        const auto columnName = model()->headerData(i, Qt::Horizontal, Qt::DisplayRole).toString();
+        const QVariant columnToolTip = model()->headerData(i, Qt::Horizontal, Qt::ToolTipRole);
+        QAction *action = menu->addAction(columnName, this, [this, i](const bool checked)
+        {
+            if (!checked && (visibleColumnsCount() <= 1))
+                return;
+
+            setColumnHidden(i, !checked);
+
+            if (checked && (columnWidth(i) <= 5))
+                resizeColumnToContents(i);
+
+#ifndef QBT_REMOTE_CLIENT
+            saveSettings();
+#endif
+        });
+        action->setCheckable(true);
+        action->setChecked(!isColumnHidden(i));
+        if (!columnToolTip.isNull())
+            action->setToolTip(columnToolTip.toString());
+    }
+
+    menu->addSeparator();
+    QAction *resizeAction = menu->addAction(tr("Resize columns"), this, [this]()
+    {
+        for (int i = 0, count = header()->count(); i < count; ++i)
+        {
+            if (!isColumnHidden(i))
+                resizeColumnToContents(i);
+        }
+#ifndef QBT_REMOTE_CLIENT
+        saveSettings();
+#endif
+    });
+    resizeAction->setToolTip(tr("Resize all non-hidden columns to the size of their contents"));
+
+    menu->popup(QCursor::pos());
 }

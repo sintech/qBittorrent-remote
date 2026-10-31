@@ -2,7 +2,8 @@
 
 This experimental frontend targets a qBittorrent **5.2.x** Web API server
 (tested protocol fixture: 5.2.4). It uses the unchanged upstream
-`src/gui/mainwindow.ui`, upstream icons and native Qt widgets. It does not embed
+`src/gui/mainwindow.ui` and `src/gui/properties/propertieswidget.ui`, together
+with the actual upstream widget classes and theme system. It does not embed
 a browser and does not start a local BitTorrent session.
 
 ## Build and run
@@ -33,12 +34,24 @@ kept in process memory only and must be entered on the next launch.
 
 ## Implemented
 
-- Original main-window menus/toolbar, a native QTreeView torrent list, upstream
-  progress-bar painter, original default state colors/icons, rearrangeable/hideable
-  columns, multi-selection and shortcuts. The filter is in the toolbar.
-- Upstream PropertiesWidget form with the original Transfer/Information groups,
-  upstream property-tab button bar at the bottom, and upstream collapsible sidebar
-  section headers. The sidebar spans the full height of the transfers area.
+- Remote controller inherits the real `MainWindow`; the form, toolbar icons,
+  filter `LineEdit` and transfer splitter layout are initialized in `src/gui` by
+  the same methods used by the local client.
+- The actual `TransferListWidget` and `TransferListDelegate` render the torrent
+  list. Its original column defaults, size hints, header menu and progress painter
+  are used. API values are adapted to native model roles (including `TorrentState`
+  and percentage values); state strings, icons and colors come from the original
+  `TransferListModel` presentation helpers, not a duplicate implementation.
+- The actual `PropertiesWidget`, `PeerListWidget`, `TrackerListWidget` and
+  `TorrentContentWidget` are instantiated. The original property form is compiled
+  directly without replacing promoted widgets or generating a modified UI file.
+- Original `TransferListFiltersWidget`, `StatusFilterWidget` (all fourteen rows),
+  category/tag filter widgets and `BaseFilterWidget` provide sidebar presentation.
+  Remote code binds filter models and counts; there is no custom filter-list view.
+- The original `StatusBar` formats a backend-independent session snapshot.
+  `UIThemeManager` and its native theme sources provide icons/colors/styles.
+  The platform style default is shared with local preferences: **Fusion on Windows**.
+  Free-space display follows the original default (hidden).
 - Russian localization reuses the upstream catalog when Qt LinguistTools is
   installed (included by the Windows workflow). The system language is used by
   default; View > Language selects English/Russian for the next launch.
@@ -48,10 +61,12 @@ kept in process memory only and must be entered on the next launch.
 - Independent status, category, tag and tracker filters with counts, plus
   case-insensitive torrent-name/server-path search.
 - Start, stop, force start, recheck, reannounce, queue-position commands.
-- Add local `.torrent` files or magnet/HTTP(S) URLs. The optional download path
-  is a literal path on the **server**.
+- Add local `.torrent` files or magnet/HTTP(S) URLs. URL entry uses the original
+  `DownloadFromURLDialog`, including clipboard handling and duplicate removal.
+  File uploads may specify a literal path on the **server**; URL additions use the
+  server's configured default path.
 - Remove torrents; server content deletion is unchecked by default and requires
-  a confirmation in the application.
+  the original `DeletionConfirmationDialog`.
 - Original General property layout with the actual upstream downloaded-pieces
   and availability bars, stretched across the original layout.
 - Shared native Trackers/Peers/Content presentation: original column order,
@@ -71,18 +86,22 @@ kept in process memory only and must be entered on the next launch.
 
 ## Explicit first-preview limitations
 
-This reuses upstream **main-window/property forms, button bars, sidebar headers,
-property-table presentation, piece bars, speed graph, progress painting and
-resources**, with remote data binding. It does not yet reuse
-all session-bound widget controllers or the full `MainWindow` implementation.
-The remote data model and controller are new; complete GUI parity is not claimed.
+UI policy: reuse the canonical widgets and their shared initialization in
+`src/gui`. Do not add remote copies of forms, painters, style sheets, sizing rules
+or visual widget implementations. `src/remote` is the API/data/command adapter;
+its connection dialog is a remote-specific addition with no local equivalent.
+Native session-controller sections are excluded from the API-only target; shared
+view code is still compiled from the same source files. The local torrent engine
+is never instantiated. Full functionality parity is not claimed.
 
 Trackers, peers and content are still read-only. Settings, RSS, search plugins,
 torrent creation, session pause, statistics, tray integration and
 full add-torrent options remain unported. Connect to Server is in the File menu;
 the original Options action keeps its label and stays disabled until ported.
-Custom qbtheme files and the local client's appearance preferences are not yet
-imported. Some new remote-specific dialogs still use English strings.
+The remote profile does not import the local client's appearance preferences.
+The original theme loader is available through the separate remote profile
+(`remote/theme` for a qbtheme path, `remote/style` for a Qt style); an appearance
+settings UI is still unported. Some new remote-specific dialogs still use English strings.
 Path translation, opening server files, and browsing server directories are deferred.
 No remote server shutdown command is sent when closing the client.
 

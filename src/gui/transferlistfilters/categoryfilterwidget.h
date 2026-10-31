@@ -36,6 +36,10 @@ class CategoryFilterWidget final : public QTreeView
     Q_DISABLE_COPY_MOVE(CategoryFilterWidget)
 
 public:
+    CategoryFilterWidget(QWidget *parent, QAbstractItemModel *model);
+    void configureView();
+    void callUpdateGeometry();
+#ifndef QBT_REMOTE_CLIENT
     explicit CategoryFilterWidget(QWidget *parent = nullptr);
 
     QString currentCategory() const;
@@ -49,7 +53,6 @@ signals:
 private slots:
     void onCurrentRowChanged(const QModelIndex &current, const QModelIndex &previous);
     void showMenu();
-    void callUpdateGeometry();
     void addCategory();
     void addSubcategory();
     void editCategory();
@@ -57,6 +60,7 @@ private slots:
     void removeUnusedCategories();
 
 private:
+#endif
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
     void rowsInserted(const QModelIndex &parent, int start, int end) override;

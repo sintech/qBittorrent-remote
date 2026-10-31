@@ -29,6 +29,21 @@
 
 #include "mainwindow.h"
 
+#include <QAction>
+#include <QComboBox>
+#include <QLabel>
+#include <QSplitter>
+#include <QHBoxLayout>
+#include "base/global.h"
+#include "hidabletabwidget.h"
+#include "lineedit.h"
+#include "properties/propertieswidget.h"
+#include "transferlistwidget.h"
+#include "uithememanager.h"
+#include "ui_mainwindow.h"
+
+#ifndef QBT_REMOTE_CLIENT
+
 #include <QtSystemDetection>
 
 #include <algorithm>
@@ -143,7 +158,7 @@ MainWindow::MainWindow(IGUIApplication *app, const WindowState initialState, con
     , m_statusItem {std::make_unique<MacUtils::StatusItem>()}
 #endif // Q_OS_MACOS
 {
-    m_ui->setupUi(this);
+    initializeUi();
 
     Preferences *const pref = Preferences::instance();
     m_uiLocked = pref->isUILocked();
@@ -162,31 +177,6 @@ MainWindow::MainWindow(IGUIApplication *app, const WindowState initialState, con
 #endif
 
     addToolbarContextMenu();
-
-    m_ui->actionOpen->setIcon(UIThemeManager::instance()->getIcon(u"list-add"_s));
-    m_ui->actionDownloadFromURL->setIcon(UIThemeManager::instance()->getIcon(u"insert-link"_s));
-    m_ui->actionSetGlobalSpeedLimits->setIcon(UIThemeManager::instance()->getIcon(u"speedometer"_s));
-    m_ui->actionCreateTorrent->setIcon(UIThemeManager::instance()->getIcon(u"torrent-creator"_s, u"document-edit"_s));
-    m_ui->actionAbout->setIcon(UIThemeManager::instance()->getIcon(u"help-about"_s));
-    m_ui->actionStatistics->setIcon(UIThemeManager::instance()->getIcon(u"view-statistics"_s));
-    m_ui->actionTopQueuePos->setIcon(UIThemeManager::instance()->getIcon(u"go-top"_s));
-    m_ui->actionIncreaseQueuePos->setIcon(UIThemeManager::instance()->getIcon(u"go-up"_s));
-    m_ui->actionDecreaseQueuePos->setIcon(UIThemeManager::instance()->getIcon(u"go-down"_s));
-    m_ui->actionBottomQueuePos->setIcon(UIThemeManager::instance()->getIcon(u"go-bottom"_s));
-    m_ui->actionDelete->setIcon(UIThemeManager::instance()->getIcon(u"list-remove"_s));
-    m_ui->actionDocumentation->setIcon(UIThemeManager::instance()->getIcon(u"help-contents"_s));
-    m_ui->actionDonateMoney->setIcon(UIThemeManager::instance()->getIcon(u"wallet-open"_s));
-    m_ui->actionExit->setIcon(UIThemeManager::instance()->getIcon(u"application-exit"_s));
-    m_ui->actionLock->setIcon(UIThemeManager::instance()->getIcon(u"object-locked"_s));
-    m_ui->actionOptions->setIcon(UIThemeManager::instance()->getIcon(u"configure"_s, u"preferences-system"_s));
-    m_ui->actionStart->setIcon(UIThemeManager::instance()->getIcon(u"torrent-start"_s, u"media-playback-start"_s));
-    m_ui->actionStop->setIcon(UIThemeManager::instance()->getIcon(u"torrent-stop"_s, u"media-playback-pause"_s));
-    m_ui->actionPauseSession->setIcon(UIThemeManager::instance()->getIcon(u"pause-session"_s, u"media-playback-pause"_s));
-    m_ui->actionResumeSession->setIcon(UIThemeManager::instance()->getIcon(u"torrent-start"_s, u"media-playback-start"_s));
-    m_ui->menuAutoShutdownOnDownloadsCompletion->setIcon(UIThemeManager::instance()->getIcon(u"task-complete"_s, u"application-exit"_s));
-    m_ui->actionManageCookies->setIcon(UIThemeManager::instance()->getIcon(u"browser-cookies"_s, u"preferences-web-browser-cookies"_s));
-    m_ui->menuLog->setIcon(UIThemeManager::instance()->getIcon(u"help-contents"_s));
-    m_ui->actionCheckForUpdates->setIcon(UIThemeManager::instance()->getIcon(u"view-refresh"_s));
 
     m_ui->actionPauseSession->setVisible(!BitTorrent::Session::instance()->isPaused());
     m_ui->actionResumeSession->setVisible(BitTorrent::Session::instance()->isPaused());
@@ -214,73 +204,22 @@ MainWindow::MainWindow(IGUIApplication *app, const WindowState initialState, con
 
     connect(BitTorrent::Session::instance(), &BitTorrent::Session::speedLimitModeChanged, this, &MainWindow::updateAltSpeedsBtn);
 
-    qDebug("create tabWidget");
-    m_tabs = new HidableTabWidget(this);
-    connect(m_tabs.data(), &QTabWidget::currentChanged, this, &MainWindow::tabChanged);
-
-    m_splitter = new QSplitter(Qt::Horizontal, this);
-    // vSplitter->setChildrenCollapsible(false);
-
-    auto *hSplitter = new QSplitter(Qt::Vertical, this);
-    hSplitter->setChildrenCollapsible(false);
-    hSplitter->setFrameShape(QFrame::NoFrame);
-
-    // Torrent filter
-    m_columnFilterEdit = new LineEdit;
-    m_columnFilterEdit->setPlaceholderText(tr("Filter torrents..."));
-    m_columnFilterEdit->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    m_columnFilterEdit->setFixedWidth(200);
-    m_columnFilterEdit->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(m_columnFilterEdit, &QWidget::customContextMenuRequested, this, &MainWindow::showFilterContextMenu);
-    auto *columnFilterLabel = new QLabel(tr("Filter by:"));
-    m_columnFilterComboBox = new QComboBox;
-    QHBoxLayout *columnFilterLayout = new QHBoxLayout(m_columnFilterWidget);
-    columnFilterLayout->setContentsMargins(0, 0, 0, 0);
-    auto *columnFilterSpacer = new QWidget(this);
-    columnFilterSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    columnFilterLayout->addWidget(columnFilterSpacer);
-    columnFilterLayout->addWidget(m_columnFilterEdit);
-    columnFilterLayout->addWidget(columnFilterLabel, 0);
-    columnFilterLayout->addWidget(m_columnFilterComboBox, 0);
-    m_columnFilterWidget = new QWidget(this);
-    m_columnFilterWidget->setLayout(columnFilterLayout);
-    m_columnFilterAction = m_ui->toolBar->insertWidget(m_ui->actionLock, m_columnFilterWidget);
-
-    auto *spacer = new QWidget(this);
-    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    m_ui->toolBar->insertWidget(m_columnFilterAction, spacer);
-
-    // Transfer List tab
     m_transferListWidget = new TransferListWidget(app, this);
-    m_propertiesWidget = new PropertiesWidget(hSplitter);
+    m_propertiesWidget = new PropertiesWidget(this);
+    const auto transferView = setupTransferView(m_transferListWidget, m_propertiesWidget);
+    m_tabs = transferView.tabs;
+    m_splitter = transferView.horizontal;
+    auto *hSplitter = transferView.vertical;
+    m_columnFilterEdit = transferView.filter;
+    m_columnFilterComboBox = transferView.filterColumn;
+    m_columnFilterWidget = transferView.filterWidget;
+    m_columnFilterAction = transferView.filterAction;
+    connect(m_tabs.data(), &QTabWidget::currentChanged, this, &MainWindow::tabChanged);
     connect(m_transferListWidget, &TransferListWidget::currentTorrentChanged, m_propertiesWidget, &PropertiesWidget::loadTorrentInfos);
-    hSplitter->addWidget(m_transferListWidget);
-    hSplitter->addWidget(m_propertiesWidget);
-    m_splitter->addWidget(hSplitter);
-    m_splitter->setCollapsible(0, false);
-    m_tabs->addTab(m_splitter,
-#ifndef Q_OS_MACOS
-        UIThemeManager::instance()->getIcon(u"folder-remote"_s),
-#endif
-        tr("Transfers"));
-    // Filter types
-    const QList<TransferListModel::Column> filterTypes = {TransferListModel::Column::TR_NAME, TransferListModel::Column::TR_SAVE_PATH};
-    for (const TransferListModel::Column type : filterTypes)
-    {
-        const QString typeName = m_transferListWidget->getSourceModel()->headerData(type, Qt::Horizontal, Qt::DisplayRole).value<QString>();
-        m_columnFilterComboBox->addItem(typeName, type);
-    }
     connect(m_columnFilterComboBox, &QComboBox::currentIndexChanged, this, &MainWindow::applyTransferListFilter);
     connect(m_columnFilterEdit, &LineEdit::textUpdated, this, &MainWindow::applyTransferListFilter);
     connect(hSplitter, &QSplitter::splitterMoved, this, &MainWindow::saveSettings);
     connect(m_splitter, &QSplitter::splitterMoved, this, &MainWindow::saveSplitterSettings);
-
-#ifdef Q_OS_MACOS
-    // Increase top spacing to avoid tab overlapping
-    m_ui->centralWidgetLayout->addSpacing(8);
-#endif
-
-    m_ui->centralWidgetLayout->addWidget(m_tabs);
 
     m_queueSeparator = m_ui->toolBar->insertSeparator(m_ui->actionTopQueuePos);
     m_queueSeparatorMenu = m_ui->menuEdit->insertSeparator(m_ui->actionTopQueuePos);
@@ -2035,3 +1974,111 @@ void MainWindow::pythonDownloadFinished(const Net::DownloadResult &result)
     installer->start(exePath.toString(), {u"/passive"_s});
 }
 #endif // Q_OS_WIN
+
+#endif
+
+void MainWindow::initializeUi()
+{
+    UIThemeManager::initInstance();
+    m_ui->setupUi(this);
+    m_ui->actionOpen->setIcon(UIThemeManager::instance()->getIcon(u"list-add"_s));
+    m_ui->actionDownloadFromURL->setIcon(UIThemeManager::instance()->getIcon(u"insert-link"_s));
+    m_ui->actionSetGlobalSpeedLimits->setIcon(UIThemeManager::instance()->getIcon(u"speedometer"_s));
+    m_ui->actionCreateTorrent->setIcon(UIThemeManager::instance()->getIcon(u"torrent-creator"_s, u"document-edit"_s));
+    m_ui->actionAbout->setIcon(UIThemeManager::instance()->getIcon(u"help-about"_s));
+    m_ui->actionStatistics->setIcon(UIThemeManager::instance()->getIcon(u"view-statistics"_s));
+    m_ui->actionTopQueuePos->setIcon(UIThemeManager::instance()->getIcon(u"go-top"_s));
+    m_ui->actionIncreaseQueuePos->setIcon(UIThemeManager::instance()->getIcon(u"go-up"_s));
+    m_ui->actionDecreaseQueuePos->setIcon(UIThemeManager::instance()->getIcon(u"go-down"_s));
+    m_ui->actionBottomQueuePos->setIcon(UIThemeManager::instance()->getIcon(u"go-bottom"_s));
+    m_ui->actionDelete->setIcon(UIThemeManager::instance()->getIcon(u"list-remove"_s));
+    m_ui->actionDocumentation->setIcon(UIThemeManager::instance()->getIcon(u"help-contents"_s));
+    m_ui->actionDonateMoney->setIcon(UIThemeManager::instance()->getIcon(u"wallet-open"_s));
+    m_ui->actionExit->setIcon(UIThemeManager::instance()->getIcon(u"application-exit"_s));
+    m_ui->actionLock->setIcon(UIThemeManager::instance()->getIcon(u"object-locked"_s));
+    m_ui->actionOptions->setIcon(UIThemeManager::instance()->getIcon(u"configure"_s, u"preferences-system"_s));
+    m_ui->actionStart->setIcon(UIThemeManager::instance()->getIcon(u"torrent-start"_s, u"media-playback-start"_s));
+    m_ui->actionStop->setIcon(UIThemeManager::instance()->getIcon(u"torrent-stop"_s, u"media-playback-pause"_s));
+    m_ui->actionPauseSession->setIcon(UIThemeManager::instance()->getIcon(u"pause-session"_s, u"media-playback-pause"_s));
+    m_ui->actionResumeSession->setIcon(UIThemeManager::instance()->getIcon(u"torrent-start"_s, u"media-playback-start"_s));
+    m_ui->menuAutoShutdownOnDownloadsCompletion->setIcon(UIThemeManager::instance()->getIcon(u"task-complete"_s, u"application-exit"_s));
+    m_ui->actionManageCookies->setIcon(UIThemeManager::instance()->getIcon(u"browser-cookies"_s, u"preferences-web-browser-cookies"_s));
+    m_ui->menuLog->setIcon(UIThemeManager::instance()->getIcon(u"help-contents"_s));
+    m_ui->actionCheckForUpdates->setIcon(UIThemeManager::instance()->getIcon(u"view-refresh"_s));
+
+}
+
+#ifdef QBT_REMOTE_CLIENT
+MainWindow::MainWindow(QWidget *parent)
+    : GUIApplicationComponent(nullptr, parent), m_ui(new Ui::MainWindow)
+{
+    initializeUi();
+}
+
+MainWindow::~MainWindow() { delete m_ui; }
+#endif
+
+MainWindow::TransferView MainWindow::setupTransferView(TransferListWidget *transfers, PropertiesWidget *properties)
+{
+    TransferView view {};
+    view.tabs = new HidableTabWidget(this);
+
+    view.horizontal = new QSplitter(Qt::Horizontal, this);
+    // vSplitter->setChildrenCollapsible(false);
+
+    auto *hSplitter = new QSplitter(Qt::Vertical, this);
+    view.vertical = hSplitter;
+    hSplitter->setChildrenCollapsible(false);
+    hSplitter->setFrameShape(QFrame::NoFrame);
+
+    // Torrent filter
+    view.filter = new LineEdit;
+    view.filter->setPlaceholderText(tr("Filter torrents..."));
+    view.filter->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    view.filter->setFixedWidth(200);
+    view.filter->setContextMenuPolicy(Qt::CustomContextMenu);
+    auto *columnFilterLabel = new QLabel(tr("Filter by:"));
+    view.filterColumn = new QComboBox;
+    QHBoxLayout *columnFilterLayout = new QHBoxLayout;
+    columnFilterLayout->setContentsMargins(0, 0, 0, 0);
+    auto *columnFilterSpacer = new QWidget(this);
+    columnFilterSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    columnFilterLayout->addWidget(columnFilterSpacer);
+    columnFilterLayout->addWidget(view.filter);
+    columnFilterLayout->addWidget(columnFilterLabel, 0);
+    columnFilterLayout->addWidget(view.filterColumn, 0);
+    view.filterWidget = new QWidget(this);
+    view.filterWidget->setLayout(columnFilterLayout);
+    view.filterAction = m_ui->toolBar->insertWidget(m_ui->actionLock, view.filterWidget);
+
+    auto *spacer = new QWidget(this);
+    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_ui->toolBar->insertWidget(view.filterAction, spacer);
+
+    // Transfer List tab
+    hSplitter->addWidget(transfers);
+    hSplitter->addWidget(properties);
+    view.horizontal->addWidget(hSplitter);
+    view.horizontal->setCollapsible(0, false);
+    view.tabs->addTab(view.horizontal,
+#ifndef Q_OS_MACOS
+        UIThemeManager::instance()->getIcon(u"folder-remote"_s),
+#endif
+        tr("Transfers"));
+    // Filter types
+    const QList<TransferListModel::Column> filterTypes = {TransferListModel::Column::TR_NAME, TransferListModel::Column::TR_SAVE_PATH};
+    for (const TransferListModel::Column type : filterTypes)
+    {
+        const QString typeName = transfers->model()->headerData(type, Qt::Horizontal, Qt::DisplayRole).value<QString>();
+        view.filterColumn->addItem(typeName, type);
+    }
+
+#ifdef Q_OS_MACOS
+    // Increase top spacing to avoid tab overlapping
+    m_ui->centralWidgetLayout->addSpacing(8);
+#endif
+
+    m_ui->centralWidgetLayout->addWidget(view.tabs);
+
+    return view;
+}

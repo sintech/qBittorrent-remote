@@ -98,6 +98,9 @@ public:
         AdditionalUnderlyingDataRole
     };
 
+    static QHash<BitTorrent::TorrentState, QColor> stateColors();
+    static QHash<BitTorrent::TorrentState, QString> statusStrings();
+    static QIcon stateIcon(BitTorrent::TorrentState state);
     explicit TransferListModel(QObject *parent = nullptr);
 
     int rowCount(const QModelIndex &parent = {}) const override;
@@ -138,17 +141,7 @@ private:
     HideZeroValuesMode m_hideZeroValuesMode = HideZeroValuesMode::Never;
     bool m_useTorrentStatesColors = false;
 
-    // cached icons
-    QIcon m_checkingIcon;
-    QIcon m_completedIcon;
-    QIcon m_downloadingIcon;
-    QIcon m_errorIcon;
-    QIcon m_movingIcon;
-    QIcon m_stoppedIcon;
-    QIcon m_queuedIcon;
-    QIcon m_stalledDLIcon;
-    QIcon m_stalledUPIcon;
-    QIcon m_uploadingIcon;
+
 };
 
 Q_DECLARE_METATYPE(TransferListModel::Column)

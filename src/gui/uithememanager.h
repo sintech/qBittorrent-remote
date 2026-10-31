@@ -46,7 +46,11 @@
 #endif
 
 #ifdef QBT_HAS_COLORSCHEME_OPTION
+#ifndef QBT_REMOTE_CLIENT
 #include "base/settingvalue.h"
+#else
+#include <QSettings>
+#endif
 #include "colorscheme.h"
 #endif
 
@@ -88,7 +92,11 @@ private:
     static UIThemeManager *m_instance;
     const bool m_useCustomTheme;
 #ifdef QBT_HAS_COLORSCHEME_OPTION
+#ifndef QBT_REMOTE_CLIENT
     SettingValue<ColorScheme> m_colorSchemeSetting;
+#else
+    ColorScheme m_colorScheme = ColorScheme::System;
+#endif
 #endif
 #if (defined(Q_OS_UNIX) && !defined(Q_OS_MACOS))
     const bool m_useSystemIcons;

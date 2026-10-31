@@ -28,6 +28,9 @@
 
 #include "categoryfilterwidget.h"
 
+#include "gui/utils.h"
+#ifndef QBT_REMOTE_CLIENT
+
 #include <QMenu>
 
 #include "base/bittorrent/session.h"
@@ -62,19 +65,7 @@ CategoryFilterWidget::CategoryFilterWidget(QWidget *parent)
     proxyModel->setSortCaseSensitivity(Qt::CaseInsensitive);
     proxyModel->setSourceModel(new CategoryFilterModel(this));
     setModel(proxyModel);
-    setFrameShape(QFrame::NoFrame);
-    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    setUniformRowHeights(true);
-    setHeaderHidden(true);
-    setIconSize(Utils::Gui::smallIconSize());
-#ifdef Q_OS_MACOS
-    setAttribute(Qt::WA_MacShowFocusRect, false);
-#endif
-    setContextMenuPolicy(Qt::CustomContextMenu);
-    sortByColumn(0, Qt::AscendingOrder);
-    setCurrentIndex(model()->index(0, 0));
+    configureView();
 
     connect(this, &QTreeView::collapsed, this, &CategoryFilterWidget::callUpdateGeometry);
     connect(this, &QTreeView::expanded, this, &CategoryFilterWidget::callUpdateGeometry);
@@ -142,6 +133,72 @@ void CategoryFilterWidget::showMenu()
     menu->popup(QCursor::pos());
 }
 
+void CategoryFilterWidget::addCategory()
+{
+    TorrentCategoryDialog::createCategory(this);
+}
+
+void CategoryFilterWidget::addSubcategory()
+{
+    TorrentCategoryDialog::createCategory(this, currentCategory());
+}
+
+void CategoryFilterWidget::editCategory()
+{
+    TorrentCategoryDialog::editCategory(this, currentCategory());
+}
+
+void CategoryFilterWidget::removeCategory()
+{
+    const auto selectedRows = selectionModel()->selectedRows();
+    if (!selectedRows.empty() && !CategoryFilterModel::isSpecialItem(selectedRows.first()))
+    {
+        BitTorrent::Session::instance()->removeCategory(
+                    static_cast<CategoryFilterProxyModel *>(model())->categoryName(selectedRows.first()));
+        updateGeometry();
+    }
+}
+
+void CategoryFilterWidget::removeUnusedCategories()
+{
+    auto *session = BitTorrent::Session::instance();
+    for (const QString &category : asConst(session->categories()))
+    {
+        if (model()->data(static_cast<CategoryFilterProxyModel *>(model())->index(category), Qt::UserRole) == 0)
+            session->removeCategory(category);
+    }
+    updateGeometry();
+}
+
+#endif
+
+void CategoryFilterWidget::configureView()
+{
+    setFrameShape(QFrame::NoFrame);
+    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    setUniformRowHeights(true);
+    setHeaderHidden(true);
+    setIconSize(Utils::Gui::smallIconSize());
+#ifdef Q_OS_MACOS
+    setAttribute(Qt::WA_MacShowFocusRect, false);
+#endif
+    setContextMenuPolicy(Qt::CustomContextMenu);
+    sortByColumn(0, Qt::AscendingOrder);
+    setCurrentIndex(model()->index(0, 0));
+}
+
+CategoryFilterWidget::CategoryFilterWidget(QWidget *parent, QAbstractItemModel *model)
+    : QTreeView(parent)
+{
+    setModel(model);
+    configureView();
+    connect(model, &QAbstractItemModel::modelReset, this, [this] { updateGeometry(); });
+    connect(this, &QTreeView::collapsed, this, [this] { updateGeometry(); });
+    connect(this, &QTreeView::expanded, this, [this] { updateGeometry(); });
+}
+
 void CategoryFilterWidget::callUpdateGeometry()
 {
     updateGeometry();
@@ -204,41 +261,4 @@ void CategoryFilterWidget::adjustIndentation()
         resetIndentation();
     else
         setIndentation(0);
-}
-
-void CategoryFilterWidget::addCategory()
-{
-    TorrentCategoryDialog::createCategory(this);
-}
-
-void CategoryFilterWidget::addSubcategory()
-{
-    TorrentCategoryDialog::createCategory(this, currentCategory());
-}
-
-void CategoryFilterWidget::editCategory()
-{
-    TorrentCategoryDialog::editCategory(this, currentCategory());
-}
-
-void CategoryFilterWidget::removeCategory()
-{
-    const auto selectedRows = selectionModel()->selectedRows();
-    if (!selectedRows.empty() && !CategoryFilterModel::isSpecialItem(selectedRows.first()))
-    {
-        BitTorrent::Session::instance()->removeCategory(
-                    static_cast<CategoryFilterProxyModel *>(model())->categoryName(selectedRows.first()));
-        updateGeometry();
-    }
-}
-
-void CategoryFilterWidget::removeUnusedCategories()
-{
-    auto *session = BitTorrent::Session::instance();
-    for (const QString &category : asConst(session->categories()))
-    {
-        if (model()->data(static_cast<CategoryFilterProxyModel *>(model())->index(category), Qt::UserRole) == 0)
-            session->removeCategory(category);
-    }
-    updateGeometry();
 }

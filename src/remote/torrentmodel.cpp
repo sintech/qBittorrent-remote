@@ -12,6 +12,11 @@
 #include <QJsonArray>
 #include <QLocale>
 
+#include "base/bittorrent/torrent.h"
+#include "base/utils/misc.h"
+#include "gui/transferlistmodel.h"
+#include "gui/uithememanager.h"
+
 using namespace Qt::StringLiterals;
 using namespace Remote;
 
@@ -44,6 +49,14 @@ namespace
 TorrentModel::TorrentModel(QObject *parent)
     : QAbstractTableModel(parent)
 {
+    UIThemeManager::initInstance();
+    m_stateColors = TransferListModel::stateColors();
+    connect(UIThemeManager::instance(), &UIThemeManager::themeChanged, this, [this]
+    {
+        m_stateColors = TransferListModel::stateColors();
+        if (rowCount() > 0)
+            emit dataChanged(index(0, 0), index(rowCount() - 1, columnCount() - 1), {Qt::DecorationRole, Qt::ForegroundRole});
+    });
 }
 
 int TorrentModel::rowCount(const QModelIndex &parent) const
@@ -68,12 +81,12 @@ QJsonObject TorrentModel::torrentAt(const int row) const
 
 QString TorrentModel::size(const qint64 bytes)
 {
-    return QLocale().formattedDataSize(qMax<qint64>(bytes, 0), 1);
+    return Utils::Misc::friendlyUnit(bytes);
 }
 
 QString TorrentModel::speed(const qint64 bytes)
 {
-    return size(bytes) + u"/s";
+    return Utils::Misc::friendlyUnit(bytes, true);
 }
 
 QString TorrentModel::duration(const qint64 seconds)
@@ -87,22 +100,9 @@ QString TorrentModel::duration(const qint64 seconds)
     return tr("%1m %2s").arg(seconds / 60).arg(seconds % 60);
 }
 
-QString TorrentModel::stateName(const QString &state)
+QString TorrentModel::stateName(const QString &value)
 {
-    const auto tr = [](const char *source) { return QCoreApplication::translate("TransferListModel", source); };
-    static const QHash<QString, QString> names {
-        {u"downloading"_s, tr("Downloading")}, {u"stalledDL"_s, tr("Stalled")},
-        {u"metaDL"_s, tr("Downloading metadata")}, {u"forcedMetaDL"_s, tr("[F] Downloading metadata")},
-        {u"forcedDL"_s, tr("[F] Downloading")}, {u"uploading"_s, tr("Seeding")},
-        {u"stalledUP"_s, tr("Seeding")}, {u"forcedUP"_s, tr("[F] Seeding")},
-        {u"queuedDL"_s, tr("Queued")}, {u"queuedUP"_s, tr("Queued")},
-        {u"checkingDL"_s, tr("Checking")}, {u"checkingUP"_s, tr("Checking")},
-        {u"checkingResumeData"_s, tr("Checking resume data")},
-        {u"stoppedDL"_s, tr("Stopped")}, {u"stoppedUP"_s, tr("Completed")},
-        {u"moving"_s, tr("Moving")}, {u"missingFiles"_s, tr("Missing Files")},
-        {u"error"_s, tr("Errored")}
-    };
-    return names.value(state, state);
+    return TransferListModel::statusStrings().value(state(value), value);
 }
 
 QVariant TorrentModel::data(const QModelIndex &index, const int role) const
@@ -113,36 +113,18 @@ QVariant TorrentModel::data(const QModelIndex &index, const int role) const
     const auto &column = columns[index.column()];
     const auto value = torrent.value(QString::fromLatin1(column.key));
     if (role == Qt::UserRole)
+    {
+        if (index.column() == 4) return value.toDouble() * 100;
+        if (index.column() == 5)
+        {
+            return QVariant::fromValue(state(value.toString()));
+        }
         return value.toVariant();
+    }
     if ((role == Qt::DecorationRole) && (index.column() == 1))
-    {
-        const QString state = torrent.value(u"state"_s).toString();
-        const QString icon = (state == u"error" || state == u"missingFiles" || state == u"unknown") ? u"error"_s
-            : state.startsWith(u"checking") ? u"force-recheck"_s
-            : state.startsWith(u"queued") ? u"queued"_s
-            : state == u"moving" ? u"set-location"_s
-            : state == u"stalledDL" ? u"stalledDL"_s
-            : state == u"stalledUP" ? u"stalledUP"_s
-            : state == u"stoppedUP" ? u"checked-completed"_s
-            : state == u"stoppedDL" ? u"stopped"_s
-            : state.contains(u"DL") || (state == u"downloading") ? u"downloading"_s : u"upload"_s;
-        return QIcon(u":/icons/" + icon + u".svg");
-    }
+        return TransferListModel::stateIcon(state(torrent.value(u"state"_s).toString()));
     if (role == Qt::ForegroundRole)
-    {
-        const QString state = torrent.value(u"state"_s).toString();
-        const bool dark = QGuiApplication::palette().base().color().lightness() < 128;
-        const auto choose = [dark](const QColor &light, const QColor &darkColor) { return dark ? darkColor : light; };
-        using namespace Color::Primer;
-        if (state == u"error" || state == u"missingFiles") return choose(Light::dangerFg, Dark::dangerFg);
-        if (state == u"stoppedDL") return choose(Light::fgMuted, Dark::fgMuted);
-        if (state == u"stoppedUP") return choose(Light::doneFg, Dark::doneFg);
-        if (state.startsWith(u"queued")) return choose(Light::scaleYellow6, Dark::scaleYellow6);
-        if (state == u"stalledDL") return choose(Light::successEmphasis, Dark::successEmphasis);
-        if (state == u"stalledUP") return choose(Light::accentEmphasis, Dark::accentEmphasis);
-        if (state == u"uploading" || state == u"forcedUP") return choose(Light::accentFg, Dark::accentFg);
-        return choose(Light::successFg, Dark::successFg);
-    }
+        return m_stateColors.value(state(torrent.value(u"state"_s).toString()));
     if ((role == Qt::TextAlignmentRole) && (column.format != Text) && (column.format != State))
         return QVariant::fromValue(Qt::AlignRight | Qt::AlignVCenter);
     if (role != Qt::DisplayRole)
@@ -269,6 +251,7 @@ bool TorrentFilter::filterAcceptsRow(const int row, const QModelIndex &) const
 
 bool TorrentFilter::acceptsState(const QJsonObject &torrent, const QString &filter)
 {
+    if (filter == u"stalledUP" || filter == u"stalledDL") return torrent.value(u"state"_s).toString() == filter;
     const QString state = torrent.value(u"state"_s).toString();
     const bool complete = torrent.value(u"progress"_s).toDouble() >= 1;
     const bool errored = (state == u"error") || (state == u"missingFiles");
@@ -286,4 +269,21 @@ bool TorrentFilter::acceptsState(const QJsonObject &torrent, const QString &filt
     if (filter == u"moving") return state == u"moving";
     if (filter == u"errored") return errored;
     return true;
+}
+
+BitTorrent::TorrentState TorrentModel::state(const QString &value)
+{
+    using BitTorrent::TorrentState;
+    static const QHash<QString, TorrentState> states {
+        {u"downloading"_s, TorrentState::Downloading}, {u"stalledDL"_s, TorrentState::StalledDownloading},
+        {u"forcedDL"_s, TorrentState::ForcedDownloading}, {u"metaDL"_s, TorrentState::DownloadingMetadata},
+        {u"forcedMetaDL"_s, TorrentState::ForcedDownloadingMetadata}, {u"uploading"_s, TorrentState::Uploading},
+        {u"forcedUP"_s, TorrentState::ForcedUploading}, {u"stalledUP"_s, TorrentState::StalledUploading},
+        {u"queuedDL"_s, TorrentState::QueuedDownloading}, {u"queuedUP"_s, TorrentState::QueuedUploading},
+        {u"checkingDL"_s, TorrentState::CheckingDownloading}, {u"checkingUP"_s, TorrentState::CheckingUploading},
+        {u"checkingResumeData"_s, TorrentState::CheckingResumeData}, {u"stoppedDL"_s, TorrentState::StoppedDownloading},
+        {u"stoppedUP"_s, TorrentState::StoppedUploading}, {u"moving"_s, TorrentState::Moving},
+        {u"missingFiles"_s, TorrentState::MissingFiles}, {u"error"_s, TorrentState::Error}
+    };
+    return states.value(value, TorrentState::Unknown);
 }

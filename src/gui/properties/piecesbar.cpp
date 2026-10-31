@@ -38,6 +38,7 @@
 #include <QToolTip>
 
 #include "base/global.h"
+#include "gui/uithememanager.h"
 #ifndef QBT_REMOTE_CLIENT
 #include "base/bittorrent/torrent.h"
 #include "base/bittorrent/torrentinfo.h"
@@ -226,31 +227,19 @@ void PiecesBar::redraw()
 
 QColor PiecesBar::backgroundColor() const
 {
-#ifndef QBT_REMOTE_CLIENT
     const QColor color = UIThemeManager::instance()->getColor(u"PiecesBar.MissingPiece"_s);
-#else
-    const QColor color;
-#endif
     return color.isValid() ? color : palette().color(QPalette::Active, QPalette::Base);
 }
 
 QColor PiecesBar::borderColor() const
 {
-#ifndef QBT_REMOTE_CLIENT
     const QColor color = UIThemeManager::instance()->getColor(u"PiecesBar.Border"_s);
-#else
-    const QColor color;
-#endif
     return color.isValid() ? color : palette().color(QPalette::Active, QPalette::Dark);
 }
 
 QColor PiecesBar::pieceColor() const
 {
-#ifndef QBT_REMOTE_CLIENT
     const QColor color = UIThemeManager::instance()->getColor(u"PiecesBar.Piece"_s);
-#else
-    const QColor color;
-#endif
     return color.isValid() ? color : palette().color(QPalette::Active, QPalette::Highlight);
 }
 

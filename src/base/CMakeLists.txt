@@ -173,6 +173,7 @@ add_library(qbt_base STATIC
     logger.cpp
     net/dnsupdater.cpp
     net/downloadhandlerimpl.cpp
+    net/downloadscheme.cpp
     net/downloadmanager.cpp
     net/geoipdatabase.cpp
     net/geoipmanager.cpp
@@ -209,6 +210,7 @@ add_library(qbt_base STATIC
     utils/foreignapps.cpp
     utils/fs.cpp
     utils/gzip.cpp
+    utils/readfile.cpp
     utils/io.cpp
     utils/size.cpp
     utils/misc.cpp

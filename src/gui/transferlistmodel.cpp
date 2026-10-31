@@ -45,71 +45,11 @@
 #include "base/utils/string.h"
 #include "uithememanager.h"
 
-namespace
-{
-    QHash<BitTorrent::TorrentState, QColor> torrentStateColorsFromUITheme()
-    {
-        struct TorrentStateColorDescriptor
-        {
-            const BitTorrent::TorrentState state;
-            const QString id;
-        };
-
-        const TorrentStateColorDescriptor colorDescriptors[] =
-        {
-            {BitTorrent::TorrentState::Downloading, u"TransferList.Downloading"_s},
-            {BitTorrent::TorrentState::StalledDownloading, u"TransferList.StalledDownloading"_s},
-            {BitTorrent::TorrentState::DownloadingMetadata, u"TransferList.DownloadingMetadata"_s},
-            {BitTorrent::TorrentState::ForcedDownloadingMetadata, u"TransferList.ForcedDownloadingMetadata"_s},
-            {BitTorrent::TorrentState::ForcedDownloading, u"TransferList.ForcedDownloading"_s},
-            {BitTorrent::TorrentState::Uploading, u"TransferList.Uploading"_s},
-            {BitTorrent::TorrentState::StalledUploading, u"TransferList.StalledUploading"_s},
-            {BitTorrent::TorrentState::ForcedUploading, u"TransferList.ForcedUploading"_s},
-            {BitTorrent::TorrentState::QueuedDownloading, u"TransferList.QueuedDownloading"_s},
-            {BitTorrent::TorrentState::QueuedUploading, u"TransferList.QueuedUploading"_s},
-            {BitTorrent::TorrentState::CheckingDownloading, u"TransferList.CheckingDownloading"_s},
-            {BitTorrent::TorrentState::CheckingUploading, u"TransferList.CheckingUploading"_s},
-            {BitTorrent::TorrentState::CheckingResumeData, u"TransferList.CheckingResumeData"_s},
-            {BitTorrent::TorrentState::StoppedDownloading, u"TransferList.StoppedDownloading"_s},
-            {BitTorrent::TorrentState::StoppedUploading, u"TransferList.StoppedUploading"_s},
-            {BitTorrent::TorrentState::Moving, u"TransferList.Moving"_s},
-            {BitTorrent::TorrentState::MissingFiles, u"TransferList.MissingFiles"_s},
-            {BitTorrent::TorrentState::Error, u"TransferList.Error"_s}
-        };
-
-        QHash<BitTorrent::TorrentState, QColor> colors;
-        for (const TorrentStateColorDescriptor &colorDescriptor : colorDescriptors)
-        {
-            const QColor themeColor = UIThemeManager::instance()->getColor(colorDescriptor.id);
-            colors.insert(colorDescriptor.state, themeColor);
-        }
-        return colors;
-    }
-}
-
 // TransferListModel
 
 TransferListModel::TransferListModel(QObject *parent)
     : QAbstractListModel {parent}
-    , m_statusStrings {
-        {BitTorrent::TorrentState::Downloading, tr("Downloading")},
-        {BitTorrent::TorrentState::StalledDownloading, tr("Stalled", "Torrent is waiting for download to begin")},
-        {BitTorrent::TorrentState::DownloadingMetadata, tr("Downloading metadata", "Used when loading a magnet link")},
-        {BitTorrent::TorrentState::ForcedDownloadingMetadata, tr("[F] Downloading metadata", "Used when forced to load a magnet link. You probably shouldn't translate the F.")},
-        {BitTorrent::TorrentState::ForcedDownloading, tr("[F] Downloading", "Used when the torrent is forced started. You probably shouldn't translate the F.")},
-        {BitTorrent::TorrentState::Uploading, tr("Seeding", "Torrent is complete and in upload-only mode")},
-        {BitTorrent::TorrentState::StalledUploading, tr("Seeding", "Torrent is complete and in upload-only mode")},
-        {BitTorrent::TorrentState::ForcedUploading, tr("[F] Seeding", "Used when the torrent is forced started. You probably shouldn't translate the F.")},
-        {BitTorrent::TorrentState::QueuedDownloading, tr("Queued", "Torrent is queued")},
-        {BitTorrent::TorrentState::QueuedUploading, tr("Queued", "Torrent is queued")},
-        {BitTorrent::TorrentState::CheckingDownloading, tr("Checking", "Torrent local data is being checked")},
-        {BitTorrent::TorrentState::CheckingUploading, tr("Checking", "Torrent local data is being checked")},
-        {BitTorrent::TorrentState::CheckingResumeData, tr("Checking resume data", "Used when loading the torrents from disk after qbt is launched. It checks the correctness of the .fastresume file. Normally it is completed in a fraction of a second, unless loading many many torrents.")},
-        {BitTorrent::TorrentState::StoppedDownloading, tr("Stopped")},
-        {BitTorrent::TorrentState::StoppedUploading, tr("Completed")},
-        {BitTorrent::TorrentState::Moving, tr("Moving", "Torrent local data are being moved/relocated")},
-        {BitTorrent::TorrentState::MissingFiles, tr("Missing Files")},
-        {BitTorrent::TorrentState::Error, tr("Errored", "Torrent status, the torrent has an error")}}
+    , m_statusStrings {statusStrings()}
 {
     configure();
     connect(Preferences::instance(), &Preferences::changed, this, &TransferListModel::configure);
@@ -755,58 +695,12 @@ void TransferListModel::configure()
 
 void TransferListModel::loadUIThemeResources()
 {
-    m_stateThemeColors = torrentStateColorsFromUITheme();
+    m_stateThemeColors = stateColors();
 
-    const auto *themeManager = UIThemeManager::instance();
-    m_checkingIcon = themeManager->getIcon(u"force-recheck"_s, u"checking"_s);
-    m_completedIcon = themeManager->getIcon(u"checked-completed"_s, u"completed"_s);
-    m_downloadingIcon = themeManager->getIcon(u"downloading"_s);
-    m_errorIcon = themeManager->getIcon(u"error"_s);
-    m_movingIcon = themeManager->getIcon(u"set-location"_s);
-    m_stoppedIcon = themeManager->getIcon(u"stopped"_s, u"media-playback-pause"_s);
-    m_queuedIcon = themeManager->getIcon(u"queued"_s);
-    m_stalledDLIcon = themeManager->getIcon(u"stalledDL"_s);
-    m_stalledUPIcon = themeManager->getIcon(u"stalledUP"_s);
-    m_uploadingIcon = themeManager->getIcon(u"upload"_s, u"uploading"_s);
+
 }
 
 QIcon TransferListModel::getIconByState(const BitTorrent::TorrentState state) const
 {
-    switch (state)
-    {
-    case BitTorrent::TorrentState::Downloading:
-    case BitTorrent::TorrentState::ForcedDownloading:
-    case BitTorrent::TorrentState::DownloadingMetadata:
-    case BitTorrent::TorrentState::ForcedDownloadingMetadata:
-        return m_downloadingIcon;
-    case BitTorrent::TorrentState::StalledDownloading:
-        return m_stalledDLIcon;
-    case BitTorrent::TorrentState::StalledUploading:
-        return m_stalledUPIcon;
-    case BitTorrent::TorrentState::Uploading:
-    case BitTorrent::TorrentState::ForcedUploading:
-        return m_uploadingIcon;
-    case BitTorrent::TorrentState::StoppedDownloading:
-        return m_stoppedIcon;
-    case BitTorrent::TorrentState::StoppedUploading:
-        return m_completedIcon;
-    case BitTorrent::TorrentState::QueuedDownloading:
-    case BitTorrent::TorrentState::QueuedUploading:
-        return m_queuedIcon;
-    case BitTorrent::TorrentState::CheckingDownloading:
-    case BitTorrent::TorrentState::CheckingUploading:
-    case BitTorrent::TorrentState::CheckingResumeData:
-        return m_checkingIcon;
-    case BitTorrent::TorrentState::Moving:
-        return m_movingIcon;
-    case BitTorrent::TorrentState::Unknown:
-    case BitTorrent::TorrentState::MissingFiles:
-    case BitTorrent::TorrentState::Error:
-        return m_errorIcon;
-    default:
-        Q_UNREACHABLE();
-        break;
-    }
-
-    return {};
+    return stateIcon(state);
 }

@@ -31,7 +31,9 @@
 #include <iterator>
 #include <memory>
 
+#ifndef QBT_REMOTE_CLIENT
 #include <libtorrent/fwd.hpp>
+#endif
 
 #include <QIODevice>
 
@@ -102,7 +104,11 @@ namespace Utils::IO
     nonstd::expected<QByteArray, ReadError> readFile(const Path &path, qint64 size, QIODevice::OpenMode additionalMode = {});
 
     nonstd::expected<void, QString> saveToFile(const Path &path, const QByteArray &data);
+#ifndef QBT_REMOTE_CLIENT
     nonstd::expected<void, QString> saveToFile(const Path &path, const lt::entry &data);
+#endif
     nonstd::expected<Path, QString> saveToTempFile(const QByteArray &data);
+#ifndef QBT_REMOTE_CLIENT
     nonstd::expected<Path, QString> saveToTempFile(const lt::entry &data);
+#endif
 }

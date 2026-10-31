@@ -4,12 +4,13 @@
 #include <memory>
 
 #include <QJsonObject>
-#include <QMainWindow>
+#include "gui/mainwindow.h"
 #include <QTimer>
 
 #include "client.h"
 #include "torrentmodel.h"
 
+class StatusBar;
 class QJsonDocument;
 class QCloseEvent;
 class QLineEdit;
@@ -26,7 +27,7 @@ namespace Remote
 {
     class Properties;
     class Sidebar;
-    class Window final : public QMainWindow
+    class Window final : public MainWindow
     {
         Q_OBJECT
 
@@ -53,22 +54,17 @@ namespace Remote
         void addLinks();
         void showContextMenu(const QPoint &position);
 
-        std::unique_ptr<Ui::MainWindow> m_ui;
         Client m_client;
         TorrentModel m_model;
         TorrentFilter m_filter;
-        QTreeView *m_table = nullptr;
-        QLineEdit *m_search = nullptr;
+        TransferListWidget *m_table = nullptr;
+        LineEdit *m_search = nullptr;
         Sidebar *m_sidebar = nullptr;
         QSplitter *m_horizontal = nullptr;
         QSplitter *m_vertical = nullptr;
         Properties *m_properties = nullptr;
         QComboBox *m_filterColumn = nullptr;
-        QLabel *m_status = nullptr;
-        QLabel *m_rates = nullptr;
-        QLabel *m_uploadRate = nullptr;
-        QLabel *m_freeSpace = nullptr;
-        QLabel *m_dht = nullptr;
+        StatusBar *m_nativeStatus = nullptr;
         QTimer m_detailsTimer;
         QJsonObject m_categories;
         QSet<QString> m_tags;

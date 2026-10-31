@@ -31,7 +31,6 @@
 
 #include <QDialog>
 
-#include "ui_deletionconfirmationdialog.h"
 
 namespace Ui
 {

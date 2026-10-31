@@ -53,10 +53,15 @@ public slots:
     void toggleFilter(bool checked);
 
 private slots:
+#ifdef QBT_REMOTE_CLIENT
+    virtual void showMenu() {}
+    virtual void applyFilter(int) {}
+#else
     virtual void showMenu() = 0;
     virtual void applyFilter(int row) = 0;
     virtual void handleTorrentsLoaded(const QList<BitTorrent::Torrent *> &torrents) = 0;
     virtual void torrentAboutToBeDeleted(BitTorrent::Torrent *) = 0;
+#endif
 
 private:
     TransferListWidget *m_transferList = nullptr;

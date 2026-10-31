@@ -29,7 +29,9 @@
 
 #include "basefilterwidget.h"
 
+#ifndef QBT_REMOTE_CLIENT
 #include "base/bittorrent/session.h"
+#endif
 #include "gui/utils.h"
 
 constexpr int ALL_ROW = 0;
@@ -55,10 +57,13 @@ BaseFilterWidget::BaseFilterWidget(QWidget *parent, TransferListWidget *transfer
     connect(this, &BaseFilterWidget::customContextMenuRequested, this, &BaseFilterWidget::showMenu);
     connect(this, &BaseFilterWidget::currentRowChanged, this, &BaseFilterWidget::applyFilter);
 
+#ifndef QBT_REMOTE_CLIENT
     connect(BitTorrent::Session::instance(), &BitTorrent::Session::torrentsLoaded
             , this, &BaseFilterWidget::handleTorrentsLoaded);
     connect(BitTorrent::Session::instance(), &BitTorrent::Session::torrentAboutToBeRemoved
             , this, &BaseFilterWidget::torrentAboutToBeDeleted);
+#endif
+
 }
 
 QSize BaseFilterWidget::sizeHint() const
