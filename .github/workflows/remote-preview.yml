@@ -7,39 +7,60 @@ on:
       - 'src/remote/**'
       - 'src/gui/mainwindow.ui'
       - 'src/icons/**'
-      - '.github/workflows/remote-preview.yml'
-  pull_request:
-    paths:
-      - 'src/remote/**'
-      - 'src/gui/mainwindow.ui'
-      - 'src/icons/**'
-      - '.github/workflows/remote-preview.yml'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: write
+
+concurrency:
+  group: remote-preview-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
-    strategy:
-      matrix:
-        os: [ubuntu-24.04, windows-2022]
-    runs-on: ${{ matrix.os }}
+    name: Windows x64
+    runs-on: windows-2022
     steps:
+      - name: Cancel obsolete builds on this work branch
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const branch = 'feature/remote-api-5.2.4';
+            if (context.ref !== 'refs/heads/' + branch) return;
+            for (const status of ['queued', 'in_progress']) {
+              const {data} = await github.rest.actions.listWorkflowRunsForRepo({
+                ...context.repo, branch, status, per_page: 100
+              });
+              for (const run of data.workflow_runs) {
+                if (run.id >= context.runId) continue;
+                if (run.name !== 'Remote frontend preview' && !run.name.startsWith('CI - ')) continue;
+                try {
+                  await github.rest.actions.cancelWorkflowRun({...context.repo, run_id: run.id});
+                  core.info('Cancelled obsolete run ' + run.id + ': ' + run.name);
+                } catch (error) {
+                  core.warning('Could not cancel run ' + run.id + ': HTTP ' + error.status);
+                }
+              }
+            }
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
+          arch: win64_msvc2022_64
+          archives: qtbase qtsvg qttools
           cache: true
       - name: Configure
-        run: cmake -S src/remote -B build-remote -DREMOTE_TESTING=ON -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S src/remote -B build-remote -A x64 -DREMOTE_TESTING=ON
       - name: Build
         run: cmake --build build-remote --config Release --parallel 2
       - name: Test
         working-directory: build-remote
         run: ctest -C Release --output-on-failure
       - name: Package Windows executable
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path remote-preview
@@ -49,7 +70,6 @@ jobs:
           Copy-Item COPYING.GPLv3 remote-preview/
           Copy-Item doc/remote-client.md remote-preview/README.md
       - uses: actions/upload-artifact@v4
-        if: runner.os == 'Windows'
         with:
           name: qbittorrent-remote-windows-x64-preview
           path: remote-preview/

@@ -19,8 +19,11 @@ ctest --test-dir build-remote -C Release --output-on-failure
 Run `build-remote/qbittorrent-remote` on Linux, or
 `build-remote/Release/qbittorrent-remote.exe` with a Visual Studio generator.
 The root build also accepts `-DREMOTE_ONLY=ON`.
-The **Remote frontend preview** Actions workflow builds Linux and Windows,
-runs the tests and uploads a portable Windows preview with its Qt DLLs.
+The **Remote frontend preview** Actions workflow builds and tests only Windows x64,
+then uploads a portable preview with its Qt DLLs. It runs once per push, caches
+the required Qt archives and cancels obsolete CI runs on the work branch.
+Inherited CI pipelines are limited to master; they do not run for this feature
+branch or its pull request against base/5.2.4.
 
 Enter the server's Web UI URL (including a reverse proxy prefix, if applicable).
 Use an API key from the server's Web UI settings, or its username and password.
