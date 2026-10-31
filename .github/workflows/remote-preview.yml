@@ -5,7 +5,8 @@ on:
     branches: ['feature/remote-api-5.2.4']
     paths:
       - 'src/remote/**'
-      - 'src/gui/mainwindow.ui'
+      - 'src/gui/**'
+      - 'src/lang/**'
       - 'src/icons/**'
       - '.github/workflows/**'
   workflow_dispatch:

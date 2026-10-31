@@ -38,8 +38,12 @@
 #include <QProxyStyle>
 #endif
 
+#ifdef QBT_REMOTE_CLIENT
+using namespace Qt::StringLiterals;
+#else
 #include "base/global.h"
 #include "gui/uithememanager.h"
+#endif
 
 ProgressBarPainter::ProgressBarPainter(QObject *parent)
     : QObject(parent)
@@ -51,7 +55,9 @@ ProgressBarPainter::ProgressBarPainter(QObject *parent)
 #endif
 
     applyUITheme();
+#ifndef QBT_REMOTE_CLIENT
     connect(UIThemeManager::instance(), &UIThemeManager::themeChanged, this, &ProgressBarPainter::applyUITheme);
+#endif
 }
 
 void ProgressBarPainter::paint(QPainter *painter, const QStyleOptionViewItem &option, const QString &text, const int progress, const QColor &color) const
@@ -90,5 +96,7 @@ void ProgressBarPainter::paint(QPainter *painter, const QStyleOptionViewItem &op
 
 void ProgressBarPainter::applyUITheme()
 {
+#ifndef QBT_REMOTE_CLIENT
     m_chunkColor = UIThemeManager::instance()->getColor(u"ProgressBar"_s);
+#endif
 }

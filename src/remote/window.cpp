@@ -26,14 +26,17 @@
 #include <QStatusBar>
 #include <QStyledItemDelegate>
 #include <QStyleOptionProgressBar>
-#include <QTableView>
-#include <QTableWidget>
+#include <QTreeView>
 #include <QTabWidget>
 #include <QToolBar>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
 #include "ui_mainwindow.h"
+#include "properties.h"
+#include "sidebar.h"
+#include "gui/hidabletabwidget.h"
+#include "gui/progressbarpainter.h"
 
 using namespace Qt::StringLiterals;
 using namespace Remote;
@@ -43,36 +46,24 @@ namespace
     class ProgressDelegate final : public QStyledItemDelegate
     {
     public:
-        using QStyledItemDelegate::QStyledItemDelegate;
+        explicit ProgressDelegate(QObject *parent) : QStyledItemDelegate(parent) {}
         void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
         {
-            QStyleOptionProgressBar bar;
-            bar.rect = option.rect.adjusted(2, 3, -2, -3);
-            bar.minimum = 0;
-            bar.maximum = 1000;
-            bar.progress = qRound(index.data(Qt::UserRole).toDouble() * 1000);
-            bar.text = index.data().toString();
-            bar.textVisible = true;
-            bar.state = option.state;
-            bar.palette = option.palette;
-            QApplication::style()->drawControl(QStyle::CE_ProgressBar, &bar, painter);
+            if (index.column() != 4)
+            {
+                QStyledItemDelegate::paint(painter, option, index);
+                return;
+            }
+            QStyleOptionViewItem customOption(option);
+            const QString state = index.siblingAtColumn(5).data(Qt::UserRole).toString();
+            customOption.state.setFlag(QStyle::State_Enabled, state != u"error" && state != u"stoppedDL" && state != u"unknown");
+            m_painter.paint(painter, customOption, index.data().toString(),
+                int(index.data(Qt::UserRole).toDouble() * 100));
         }
+    private:
+        ProgressBarPainter m_painter;
     };
 
-    void fillTable(QTableWidget *table, const QStringList &headers, const QList<QStringList> &rows)
-    {
-        table->clear();
-        table->setColumnCount(headers.size());
-        table->setHorizontalHeaderLabels(headers);
-        table->setRowCount(rows.size());
-        for (int row = 0; row < rows.size(); ++row)
-        {
-            for (int column = 0; column < headers.size(); ++column)
-                table->setItem(row, column, new QTableWidgetItem(rows[row].value(column)));
-        }
-        table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
-        table->horizontalHeader()->setStretchLastSection(true);
-    }
 }
 
 Window::Window(QWidget *parent, QNetworkAccessManager *network)
@@ -104,35 +95,69 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     for (auto it = icons.begin(); it != icons.end(); ++it)
         it.key()->setIcon(QIcon(u":/icons/" + it.value() + u".svg"));
     m_ui->toolBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    m_ui->actionOptions->setText(tr("Connect to Server…"));
+    auto *connectAction = new QAction(QIcon(u":/icons/network-server.svg"_s), tr("Connect to Server…"), this);
+    connectAction->setObjectName(u"actionConnectRemote"_s);
+    connectAction->setShortcut(Qt::CTRL | Qt::SHIFT | Qt::Key_C);
+    m_ui->menuFile->insertAction(m_ui->actionCloseWindow, connectAction);
+    m_ui->menuFile->insertSeparator(m_ui->actionCloseWindow);
+    connect(connectAction, &QAction::triggered, this, &Window::showConnectionDialog);
     m_ui->menuAutoShutdownOnDownloadsCompletion->setEnabled(false);
     m_ui->menuLog->setEnabled(false);
+    auto *languageMenu = m_ui->menuView->addMenu(tr("Language"));
+    for (const auto &language : {u"en"_s, u"ru"_s})
+    {
+        auto *action = languageMenu->addAction(language == u"ru" ? u"Русский"_s : u"English"_s);
+        connect(action, &QAction::triggered, this, [this, language]
+        {
+            QSettings().setValue(u"remote/language"_s, language);
+            QMessageBox::information(this, tr("Language"), u"Restart the application to apply the language.\nПерезапустите приложение для смены языка."_s);
+        });
+    }
 
-    auto *tabs = new QTabWidget(this);
-    m_vertical = new QSplitter(Qt::Vertical, tabs);
-    m_horizontal = new QSplitter(Qt::Horizontal, m_vertical);
-    m_sidebar = new QTreeWidget(m_horizontal);
-    m_sidebar->setObjectName(u"remoteSidebar"_s);
-    m_sidebar->setHeaderHidden(true);
-    auto *listArea = new QWidget(m_horizontal);
+    auto *tabs = new HidableTabWidget(this);
+    m_horizontal = new QSplitter(Qt::Horizontal, tabs);
+    m_sidebar = new Sidebar(m_horizontal);
+    m_vertical = new QSplitter(Qt::Vertical, m_horizontal);
+    m_vertical->setChildrenCollapsible(false);
+    m_vertical->setFrameShape(QFrame::NoFrame);
+    auto *listArea = new QWidget(m_vertical);
     auto *listLayout = new QVBoxLayout(listArea);
     listLayout->setContentsMargins(0, 0, 0, 0);
-    m_search = new QLineEdit(listArea);
-    m_search->setPlaceholderText(tr("Filter torrent names…"));
+    auto *searchArea = new QWidget(this);
+    auto *searchLayout = new QHBoxLayout(searchArea);
+    searchLayout->setContentsMargins(0, 0, 0, 0);
+    m_search = new QLineEdit(searchArea);
+    m_search->setFixedWidth(200);
+    m_search->setPlaceholderText(QCoreApplication::translate("MainWindow", "Filter torrents..."));
     m_search->setClearButtonEnabled(true);
-    listLayout->addWidget(m_search);
-    m_table = new QTableView(listArea);
+    m_filterColumn = new QComboBox(searchArea);
+    m_filterColumn->addItem(m_model.headerData(1, Qt::Horizontal, Qt::DisplayRole).toString(), 1);
+    m_filterColumn->addItem(m_model.headerData(26, Qt::Horizontal, Qt::DisplayRole).toString(), 26);
+    searchLayout->addWidget(m_search);
+    searchLayout->addWidget(new QLabel(QCoreApplication::translate("MainWindow", "Filter by:"), searchArea));
+    searchLayout->addWidget(m_filterColumn);
+    auto *spacer = new QWidget(this);
+    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_ui->toolBar->insertWidget(m_ui->actionLock, spacer);
+    m_ui->toolBar->insertWidget(m_ui->actionLock, searchArea);
+    m_table = new QTreeView(listArea);
     m_table->setObjectName(u"remoteTorrentTable"_s);
     m_filter.setSourceModel(&m_model);
     m_filter.setSortRole(Qt::UserRole);
+    m_filter.setSortCaseSensitivity(Qt::CaseInsensitive);
     m_table->setModel(&m_filter);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    m_table->setUniformRowHeights(true);
     m_table->setAlternatingRowColors(true);
-    m_table->setShowGrid(false);
-    m_table->verticalHeader()->hide();
-    m_table->horizontalHeader()->setSectionsMovable(true);
-    m_table->setItemDelegateForColumn(4, new ProgressDelegate(m_table));
+    m_table->setRootIsDecorated(false);
+    m_table->setAllColumnsShowFocus(true);
+    m_table->setItemsExpandable(false);
+    m_table->setAutoScroll(true);
+    m_table->header()->setSectionsMovable(true);
+    m_table->header()->setFirstSectionMovable(true);
+    m_table->header()->setStretchLastSection(false);
+    m_table->setItemDelegate(new ProgressDelegate(m_table));
     m_table->setSortingEnabled(true);
     m_table->sortByColumn(1, Qt::AscendingOrder);
     const QList<int> widths {35, 260, 85, 85, 110, 120, 80, 80, 90, 90, 80, 65};
@@ -141,8 +166,8 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     m_table->hideColumn(3);
     for (int column = 12; column < m_model.columnCount(); ++column)
         m_table->hideColumn(column);
-    m_table->horizontalHeader()->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(m_table->horizontalHeader(), &QWidget::customContextMenuRequested, this, [this](const QPoint &pos)
+    m_table->header()->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_table->header(), &QWidget::customContextMenuRequested, this, [this](const QPoint &pos)
     {
         QMenu menu(this);
         for (int column = 0; column < m_model.columnCount(); ++column)
@@ -153,38 +178,44 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
             connect(action, &QAction::toggled, this, [this, column](const bool checked)
             { m_table->setColumnHidden(column, !checked); });
         }
-        menu.exec(m_table->horizontalHeader()->mapToGlobal(pos));
+        menu.exec(m_table->header()->mapToGlobal(pos));
     });
     listLayout->addWidget(m_table);
     m_horizontal->setStretchFactor(1, 1);
     m_horizontal->setSizes({170, 800});
 
-    m_properties = new QTabWidget(m_vertical);
-    const QStringList propertyNames {tr("General"), tr("Trackers"), tr("Peers"), tr("Content")};
-    for (const auto &name : propertyNames)
-    {
-        auto *table = new QTableWidget(m_properties);
-        table->setObjectName(u"remoteDetails%1"_s.arg(m_details.size()));
-        table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-        table->setAlternatingRowColors(true);
-        table->verticalHeader()->hide();
-        m_details.append(table);
-        m_properties->addTab(table, name);
-    }
-    m_vertical->setSizes({400, 180});
-    tabs->addTab(m_vertical, QIcon(u":/icons/folder-remote.svg"_s), tr("Transfers"));
+    m_properties = new Properties(m_vertical);
+    m_vertical->setSizes({380, 300});
+    tabs->addTab(m_horizontal, QIcon(u":/icons/folder-remote.svg"_s), tr("Transfers"));
     m_ui->centralWidgetLayout->addWidget(tabs);
-    m_status = new QLabel(tr("Disconnected"), this);
-    m_rates = new QLabel(this);
-    statusBar()->addWidget(m_status, 1);
-    statusBar()->addPermanentWidget(m_rates);
+    m_status = new QLabel(this);
+    m_status->setPixmap(QIcon(u":/icons/disconnected.svg"_s).pixmap(16, 16));
+    m_freeSpace = new QLabel(tr("Free space: N/A"), this);
+    m_dht = new QLabel(tr("DHT: %1 nodes").arg(0), this);
+    statusBar()->addWidget(m_freeSpace);
+    statusBar()->addWidget(m_dht);
+    statusBar()->addPermanentWidget(m_status);
+    const auto addRate = [this](const QString &icon, QLabel **label)
+    {
+        auto *area = new QWidget(this);
+        auto *layout = new QHBoxLayout(area);
+        layout->setContentsMargins(4, 0, 4, 0);
+        auto *image = new QLabel(area);
+        image->setPixmap(QIcon(u":/icons/" + icon + u".svg").pixmap(16, 16));
+        *label = new QLabel(u"0 B/s"_s, area);
+        layout->addWidget(image);
+        layout->addWidget(*label);
+        area->setMinimumWidth(155);
+        statusBar()->addPermanentWidget(area);
+    };
+    addRate(u"downloading"_s, &m_rates);
+    addRate(u"upload"_s, &m_uploadRate);
 
     const auto enableAction = [](QAction *action) { action->setEnabled(true); };
-    for (auto *action : {m_ui->actionOptions, m_ui->actionExit, m_ui->actionCloseWindow,
+    for (auto *action : {m_ui->actionExit, m_ui->actionCloseWindow,
         m_ui->actionAbout, m_ui->actionDocumentation, m_ui->actionTopToolBar,
         m_ui->actionShowStatusbar, m_ui->actionShowFiltersSidebar})
         enableAction(action);
-    connect(m_ui->actionOptions, &QAction::triggered, this, &Window::showConnectionDialog);
     connect(m_ui->actionExit, &QAction::triggered, this, &QWidget::close);
     connect(m_ui->actionCloseWindow, &QAction::triggered, this, &QWidget::close);
     connect(m_ui->actionAbout, &QAction::triggered, this, [this]
@@ -215,11 +246,22 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     m_ui->actionStop->setShortcut(Qt::CTRL | Qt::Key_P);
     m_ui->actionOptions->setShortcut(Qt::ALT | Qt::Key_O);
 
-    connect(&m_client, &Client::connectedChanged, this, [this](bool) { updateActions(); });
-    connect(&m_client, &Client::statusChanged, m_status, &QLabel::setText);
+    connect(&m_client, &Client::connectedChanged, this, [this](const bool connected)
+    {
+        updateActions();
+        if (connected)
+            statusBar()->clearMessage();
+    });
+    connect(&m_client, &Client::statusChanged, this, [this](const QString &message)
+    {
+        m_status->setPixmap(QIcon(m_client.isConnected() ? u":/icons/connected.svg"_s : u":/icons/disconnected.svg"_s).pixmap(16, 16));
+        m_status->setToolTip(message);
+        if (!m_client.isConnected())
+            statusBar()->showMessage(message, 4000);
+    });
     connect(&m_client, &Client::errorOccurred, this, [this](const QString &message)
     {
-        m_status->setText(message);
+        statusBar()->showMessage(message, 15000);
         m_status->setToolTip(message);
     });
     connect(&m_client, &Client::syncReceived, this, &Window::applySync);
@@ -230,9 +272,11 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
         m_categories = {};
         m_tags.clear();
         m_serverState = {};
-        m_rates->clear();
-        for (auto *table : m_details)
-            table->setRowCount(0);
+        m_rates->setText(u"0 B/s"_s);
+        m_uploadRate->setText(u"0 B/s"_s);
+        m_freeSpace->setText(tr("Free space: N/A"));
+        m_dht->setText(tr("DHT: %1 nodes").arg(0));
+        m_properties->clear();
         updateFilters();
     });
     connect(m_table->selectionModel(), &QItemSelectionModel::selectionChanged, this, [this]
@@ -240,26 +284,24 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     m_table->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_table, &QWidget::customContextMenuRequested, this, &Window::showContextMenu);
     connect(m_search, &QLineEdit::textChanged, this, [this] { updateFilters(); });
-    connect(m_sidebar, &QTreeWidget::currentItemChanged, this, [this]
+    connect(m_sidebar, &Sidebar::filtersChanged, this, [this]
     {
-        const auto *item = m_sidebar->currentItem();
-        m_filter.setFilters(m_search->text(),
-            item ? item->data(0, Qt::UserRole).toString() : QString(),
-            item ? item->data(0, Qt::UserRole + 1).toString() : QString(),
-            item ? item->data(0, Qt::UserRole + 2).toString() : QString());
+        m_filter.setFilters(m_search->text(), m_sidebar->state(), m_sidebar->category(),
+            m_sidebar->tag(), m_filterColumn->currentData().toInt(), m_sidebar->tracker());
     });
-    connect(m_properties, &QTabWidget::currentChanged, this, [this] { refreshDetails(); });
+    connect(m_properties, &Properties::currentChanged, this, [this] { refreshDetails(); });
+    connect(m_filterColumn, &QComboBox::currentIndexChanged, this, [this] { updateFilters(); });
     m_detailsTimer.setInterval(5000);
     connect(&m_detailsTimer, &QTimer::timeout, this, &Window::refreshDetails);
     m_detailsTimer.start();
 
     QSettings settings;
     restoreGeometry(settings.value(u"remote/geometry"_s).toByteArray());
-    const auto header = settings.value(u"remote/header"_s).toByteArray();
+    const auto header = settings.value(u"remote/nativeHeader"_s).toByteArray();
     if (!header.isEmpty())
-        m_table->horizontalHeader()->restoreState(header);
-    m_vertical->restoreState(settings.value(u"remote/vertical"_s).toByteArray());
-    m_horizontal->restoreState(settings.value(u"remote/horizontal"_s).toByteArray());
+        m_table->header()->restoreState(header);
+    m_vertical->restoreState(settings.value(u"remote/nativeVertical"_s).toByteArray());
+    m_horizontal->restoreState(settings.value(u"remote/nativeHorizontal"_s).toByteArray());
     updateActions();
     updateFilters();
 }
@@ -275,9 +317,9 @@ void Window::closeEvent(QCloseEvent *event)
 {
     QSettings settings;
     settings.setValue(u"remote/geometry"_s, saveGeometry());
-    settings.setValue(u"remote/header"_s, m_table->horizontalHeader()->saveState());
-    settings.setValue(u"remote/vertical"_s, m_vertical->saveState());
-    settings.setValue(u"remote/horizontal"_s, m_horizontal->saveState());
+    settings.setValue(u"remote/nativeHeader"_s, m_table->header()->saveState());
+    settings.setValue(u"remote/nativeVertical"_s, m_vertical->saveState());
+    settings.setValue(u"remote/nativeHorizontal"_s, m_horizontal->saveState());
     m_client.disconnectFromServer();
     QMainWindow::closeEvent(event);
 }
@@ -391,55 +433,18 @@ void Window::applySync(const QJsonObject &sync)
     const auto state = sync.value(u"server_state"_s).toObject();
     for (auto it = state.begin(); it != state.end(); ++it)
         m_serverState.insert(it.key(), it.value());
-    m_rates->setText(tr("D: %1   U: %2   Free: %3")
-        .arg(TorrentModel::speed(m_serverState.value(u"dl_info_speed"_s).toInteger()),
-            TorrentModel::speed(m_serverState.value(u"up_info_speed"_s).toInteger()),
-            TorrentModel::size(m_serverState.value(u"free_space_on_disk"_s).toInteger())));
+    m_rates->setText(TorrentModel::speed(m_serverState.value(u"dl_info_speed"_s).toInteger()));
+    m_uploadRate->setText(TorrentModel::speed(m_serverState.value(u"up_info_speed"_s).toInteger()));
+    m_freeSpace->setText(QCoreApplication::translate("StatusBar", "Free space: %1").arg(TorrentModel::size(m_serverState.value(u"free_space_on_disk"_s).toInteger())));
+    m_dht->setText(QCoreApplication::translate("StatusBar", "DHT: %1 nodes").arg(m_serverState.value(u"dht_nodes"_s).toInteger()));
     updateFilters();
 }
 
 void Window::updateFilters()
 {
-    QString kind;
-    QString value;
-    if (const auto *item = m_sidebar->currentItem())
-    {
-        kind = item->data(0, Qt::UserRole + 3).toString();
-        value = item->data(0, Qt::UserRole + 4).toString();
-    }
-    const QSignalBlocker blocker(m_sidebar);
-    m_sidebar->clear();
-    const auto add = [this, &kind, &value](QTreeWidgetItem *parent, const QString &label,
-        const QString &type, const QString &filterValue, const int role)
-    {
-        auto *item = new QTreeWidgetItem(parent, {label});
-        item->setData(0, role, filterValue);
-        item->setData(0, Qt::UserRole + 3, type);
-        item->setData(0, Qt::UserRole + 4, filterValue);
-        if ((kind == type) && (value == filterValue))
-            m_sidebar->setCurrentItem(item);
-        return item;
-    };
-    auto *states = new QTreeWidgetItem(m_sidebar, {tr("Status")});
-    const QList<QPair<QString, QString>> filters {{tr("All"), u"all"_s},
-        {tr("Downloading"), u"downloading"_s}, {tr("Completed"), u"completed"_s},
-        {tr("Stopped"), u"stopped"_s}, {tr("Errored"), u"errored"_s}};
-    for (const auto &filter : filters)
-        add(states, filter.first, u"status"_s, filter.second, Qt::UserRole);
-    auto *categories = new QTreeWidgetItem(m_sidebar, {tr("Categories")});
-    add(categories, tr("Uncategorized"), u"category"_s, u""_s, Qt::UserRole + 1);
-    for (auto it = m_categories.begin(); it != m_categories.end(); ++it)
-        add(categories, it.key(), u"category"_s, it.key(), Qt::UserRole + 1);
-    auto *tags = new QTreeWidgetItem(m_sidebar, {tr("Tags")});
-    auto tagNames = m_tags.values();
-    tagNames.sort();
-    for (const auto &tag : tagNames)
-        add(tags, tag, u"tag"_s, tag, Qt::UserRole + 2);
-    m_sidebar->expandAll();
-    const auto *item = m_sidebar->currentItem();
-    m_filter.setFilters(m_search->text(), item ? item->data(0, Qt::UserRole).toString() : QString(),
-        item ? item->data(0, Qt::UserRole + 1).toString() : QString(),
-        item ? item->data(0, Qt::UserRole + 2).toString() : QString());
+    m_sidebar->updateData(m_model, m_categories, m_tags);
+    m_filter.setFilters(m_search->text(), m_sidebar->state(), m_sidebar->category(),
+        m_sidebar->tag(), m_filterColumn->currentData().toInt(), m_sidebar->tracker());
 }
 
 void Window::runCommand(const QString &method, QUrlQuery parameters)
@@ -529,91 +534,32 @@ void Window::refreshDetails()
     const quint64 generation = ++m_detailGeneration;
     if ((hashes.size() != 1) || !m_client.isConnected())
     {
-        for (auto *table : m_details)
-            table->setRowCount(0);
+        m_properties->clear();
         return;
     }
+    const auto rows = m_table->selectionModel()->selectedRows();
+    auto torrent = m_model.torrentAt(m_filter.mapToSource(rows.first()).row());
+    torrent.insert(u"hash"_s, hashes.first());
+    m_properties->setTorrent(torrent);
     const int tab = m_properties->currentIndex();
+    if (tab < 0 || tab > 4)
+        return;
     const QStringList methods {u"torrents/properties"_s, u"torrents/trackers"_s,
-        u"sync/torrentPeers"_s, u"torrents/files"_s};
+        u"sync/torrentPeers"_s, u"torrents/webseeds"_s, u"torrents/files"_s};
     QUrlQuery query;
     query.addQueryItem(u"hash"_s, hashes.first());
     if (tab == 2)
         query.addQueryItem(u"rid"_s, u"0"_s);
-    m_client.get(methods[tab], query, [this, generation, tab](const QByteArray &body)
+    const auto apply = [this, generation](int target, const QByteArray &body)
     {
         if (generation != m_detailGeneration)
             return;
         QJsonParseError error;
         const auto document = QJsonDocument::fromJson(body, &error);
         if (error.error == QJsonParseError::NoError)
-            fillDetails(tab, document);
-    });
-}
-
-void Window::fillDetails(const int tab, const QJsonDocument &document)
-{
-    QList<QStringList> rows;
-    QStringList headers;
+            m_properties->setData(target, document);
+    };
+    m_client.get(methods[tab], query, [apply, tab](const QByteArray &body) { apply(tab, body); });
     if (tab == 0)
-    {
-        headers = {tr("Property"), tr("Value")};
-        const auto object = document.object();
-        const QList<QPair<QString, QString>> fields {
-            {tr("Save Path"), u"save_path"_s}, {tr("Total Size"), u"total_size"_s},
-            {tr("Downloaded"), u"total_downloaded"_s}, {tr("Uploaded"), u"total_uploaded"_s},
-            {tr("Down Speed"), u"dl_speed"_s}, {tr("Up Speed"), u"up_speed"_s},
-            {tr("Share Ratio"), u"share_ratio"_s}, {tr("Time Active"), u"time_elapsed"_s},
-            {tr("Connections"), u"nb_connections"_s}, {tr("Piece Size"), u"piece_size"_s},
-            {tr("Created By"), u"created_by"_s}, {tr("Comment"), u"comment"_s}
-        };
-        for (const auto &field : fields)
-        {
-            const auto value = object.value(field.second);
-            QString text = value.toVariant().toString();
-            if (field.second.contains(u"size") || field.second.startsWith(u"total_"))
-                text = TorrentModel::size(value.toInteger());
-            else if (field.second.endsWith(u"speed"))
-                text = TorrentModel::speed(value.toInteger());
-            else if (field.second == u"time_elapsed")
-                text = TorrentModel::duration(value.toInteger());
-            rows.append({field.first, text});
-        }
-    }
-    else if (tab == 1)
-    {
-        headers = {tr("URL"), tr("Status"), tr("Tier"), tr("Peers"), tr("Message")};
-        const QStringList statuses {tr("Disabled"), tr("Not contacted"), tr("Working"), tr("Updating"), tr("Not working")};
-        for (const auto value : document.array())
-        {
-            const auto item = value.toObject();
-            rows.append({item.value(u"url"_s).toString(), statuses.value(item.value(u"status"_s).toInt()),
-                QString::number(item.value(u"tier"_s).toInt()), QString::number(item.value(u"num_peers"_s).toInt()),
-                item.value(u"msg"_s).toString()});
-        }
-    }
-    else if (tab == 2)
-    {
-        headers = {tr("IP"), tr("Port"), tr("Client"), tr("Progress"), tr("Down Speed"), tr("Up Speed")};
-        const auto peers = document.object().value(u"peers"_s).toObject();
-        for (const auto value : peers)
-        {
-            const auto item = value.toObject();
-            rows.append({item.value(u"ip"_s).toString(), QString::number(item.value(u"port"_s).toInt()),
-                item.value(u"client"_s).toString(), u"%1%"_s.arg(item.value(u"progress"_s).toDouble() * 100, 0, 'f', 1),
-                TorrentModel::speed(item.value(u"dl_speed"_s).toInteger()), TorrentModel::speed(item.value(u"up_speed"_s).toInteger())});
-        }
-    }
-    else
-    {
-        headers = {tr("Name"), tr("Size"), tr("Progress"), tr("Priority"), tr("Availability")};
-        for (const auto value : document.array())
-        {
-            const auto item = value.toObject();
-            rows.append({item.value(u"name"_s).toString(), TorrentModel::size(item.value(u"size"_s).toInteger()),
-                u"%1%"_s.arg(item.value(u"progress"_s).toDouble() * 100, 0, 'f', 1),
-                QString::number(item.value(u"priority"_s).toInt()), QString::number(item.value(u"availability"_s).toDouble(), 'f', 2)});
-        }
-    }
-    fillTable(m_details[tab], headers, rows);
+        m_client.get(u"torrents/pieceStates"_s, query, [apply](const QByteArray &body) { apply(6, body); });
 }

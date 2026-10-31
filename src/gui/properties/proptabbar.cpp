@@ -33,8 +33,28 @@
 #include <QPushButton>
 #include <QSpacerItem>
 
+#ifdef QBT_REMOTE_CLIENT
+#include <QIcon>
+using namespace Qt::StringLiterals;
+#else
 #include "base/global.h"
 #include "gui/uithememanager.h"
+#endif
+
+namespace
+{
+    QIcon tabIcon(const QString &name, const QString &fallback = {})
+    {
+#ifdef QBT_REMOTE_CLIENT
+        QIcon icon(u":/icons/" + name + u".svg");
+        if (icon.isNull() && !fallback.isEmpty())
+            return QIcon(u":/icons/" + fallback + u".svg");
+        return icon;
+#else
+        return UIThemeManager::instance()->getIcon(name, fallback);
+#endif
+    }
+}
 
 PropTabBar::PropTabBar(QWidget *parent)
     : QHBoxLayout(parent)
@@ -45,7 +65,7 @@ PropTabBar::PropTabBar(QWidget *parent)
     // General tab
     QPushButton *mainInfosButton = new QPushButton(
 #ifndef Q_OS_MACOS
-            UIThemeManager::instance()->getIcon(u"help-about"_s, u"document-properties"_s),
+            tabIcon(u"help-about"_s, u"document-properties"_s),
 #endif
             tr("General"), parent);
     mainInfosButton->setShortcut(Qt::ALT | Qt::Key_G);
@@ -54,7 +74,7 @@ PropTabBar::PropTabBar(QWidget *parent)
     // Trackers tab
     QPushButton *trackersButton = new QPushButton(
 #ifndef Q_OS_MACOS
-            UIThemeManager::instance()->getIcon(u"trackers"_s, u"network-server"_s),
+            tabIcon(u"trackers"_s, u"network-server"_s),
 #endif
             tr("Trackers"), parent);
     trackersButton->setShortcut(Qt::ALT | Qt::Key_C);
@@ -63,7 +83,7 @@ PropTabBar::PropTabBar(QWidget *parent)
     // Peers tab
     QPushButton *peersButton = new QPushButton(
 #ifndef Q_OS_MACOS
-            UIThemeManager::instance()->getIcon(u"peers"_s),
+            tabIcon(u"peers"_s),
 #endif
             tr("Peers"), parent);
     peersButton->setShortcut(Qt::ALT | Qt::Key_R);
@@ -72,7 +92,7 @@ PropTabBar::PropTabBar(QWidget *parent)
     // URL seeds tab
     QPushButton *URLSeedsButton = new QPushButton(
 #ifndef Q_OS_MACOS
-            UIThemeManager::instance()->getIcon(u"network-server"_s),
+            tabIcon(u"network-server"_s),
 #endif
             tr("HTTP Sources"), parent);
     URLSeedsButton->setShortcut(Qt::ALT | Qt::Key_B);
@@ -81,7 +101,7 @@ PropTabBar::PropTabBar(QWidget *parent)
     // Files tab
     QPushButton *filesButton = new QPushButton(
 #ifndef Q_OS_MACOS
-            UIThemeManager::instance()->getIcon(u"directory"_s),
+            tabIcon(u"directory"_s),
 #endif
             tr("Content"), parent);
     filesButton->setShortcut(Qt::ALT | Qt::Key_Z);
@@ -92,7 +112,7 @@ PropTabBar::PropTabBar(QWidget *parent)
     // Speed tab
     QPushButton *speedButton = new QPushButton(
 #ifndef Q_OS_MACOS
-            UIThemeManager::instance()->getIcon(u"chart-line"_s),
+            tabIcon(u"chart-line"_s),
 #endif
             tr("Speed"), parent);
     speedButton->setShortcut(Qt::ALT | Qt::Key_D);

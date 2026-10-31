@@ -13,8 +13,8 @@
 class QJsonDocument;
 class QCloseEvent;
 class QLineEdit;
-class QTableView;
-class QTableWidget;
+class QTreeView;
+class QComboBox;
 class QTreeWidget;
 class QLabel;
 class QSplitter;
@@ -24,6 +24,8 @@ namespace Ui { class MainWindow; }
 
 namespace Remote
 {
+    class Properties;
+    class Sidebar;
     class Window final : public QMainWindow
     {
         Q_OBJECT
@@ -50,21 +52,23 @@ namespace Remote
         void addFiles();
         void addLinks();
         void showContextMenu(const QPoint &position);
-        void fillDetails(int tab, const QJsonDocument &document);
 
         std::unique_ptr<Ui::MainWindow> m_ui;
         Client m_client;
         TorrentModel m_model;
         TorrentFilter m_filter;
-        QTableView *m_table = nullptr;
+        QTreeView *m_table = nullptr;
         QLineEdit *m_search = nullptr;
-        QTreeWidget *m_sidebar = nullptr;
+        Sidebar *m_sidebar = nullptr;
         QSplitter *m_horizontal = nullptr;
         QSplitter *m_vertical = nullptr;
-        QTabWidget *m_properties = nullptr;
-        QList<QTableWidget *> m_details;
+        Properties *m_properties = nullptr;
+        QComboBox *m_filterColumn = nullptr;
         QLabel *m_status = nullptr;
         QLabel *m_rates = nullptr;
+        QLabel *m_uploadRate = nullptr;
+        QLabel *m_freeSpace = nullptr;
+        QLabel *m_dht = nullptr;
         QTimer m_detailsTimer;
         QJsonObject m_categories;
         QSet<QString> m_tags;

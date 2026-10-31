@@ -7,12 +7,25 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
-set(CMAKE_AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../gui")
+set(CMAKE_AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../gui" "${CMAKE_CURRENT_BINARY_DIR}")
+# Reuse the actual upstream property form. Only its promoted, session-bound file
+# view is substituted by a plain QTreeView with the remote content model.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../gui/properties/propertieswidget.ui")
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../gui/properties/propertieswidget.ui" propertiesForm)
+string(REPLACE "<widget class=\"TorrentContentWidget\"" "<widget class=\"QTreeView\"" propertiesForm "${propertiesForm}")
+string(REGEX REPLACE "<customwidgets>.*</customwidgets>" "" propertiesForm "${propertiesForm}")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/remoteproperties.ui" "${propertiesForm}")
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Network Widgets Svg)
-add_library(qbt_remote STATIC client.cpp client.h torrentmodel.cpp torrentmodel.h window.cpp window.h)
+add_library(qbt_remote STATIC client.cpp client.h torrentmodel.cpp torrentmodel.h window.cpp window.h properties.cpp properties.h sidebar.cpp sidebar.h
+    ../gui/transferlistfilterswidgetitem.cpp ../gui/transferlistfilterswidgetitem.h
+    ../gui/hidabletabwidget.cpp ../gui/hidabletabwidget.h
+    ../gui/properties/proptabbar.cpp ../gui/properties/proptabbar.h
+    ../gui/progressbarpainter.cpp ../gui/progressbarpainter.h
+    "${CMAKE_CURRENT_BINARY_DIR}/remoteproperties.ui")
+target_compile_definitions(qbt_remote PRIVATE QBT_REMOTE_CLIENT)
 target_compile_definitions(qbt_remote PUBLIC QT_USE_QSTRINGBUILDER QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
 target_link_libraries(qbt_remote PUBLIC Qt6::Core Qt6::Network Qt6::Widgets)
-target_include_directories(qbt_remote PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(qbt_remote PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..")
 qt_add_executable(qbittorrent-remote main.cpp ../icons/icons.qrc)
 target_link_libraries(qbittorrent-remote PRIVATE qbt_remote Qt6::Svg)
 if(WIN32)
@@ -25,5 +38,19 @@ if(REMOTE_TESTING)
     add_executable(test_remote tests/test_remote.cpp ../icons/icons.qrc)
     target_link_libraries(test_remote PRIVATE qbt_remote Qt6::Test Qt6::Svg)
     add_test(NAME remote COMMAND test_remote -platform offscreen)
+endif()
+# Reuse the upstream Russian catalog when Qt LinguistTools is available.
+find_package(Qt6 QUIET COMPONENTS LinguistTools)
+if(TARGET Qt6::lrelease AND COMMAND qt_add_translation)
+    set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/../lang/qbittorrent_ru.ts"
+        PROPERTIES OUTPUT_LOCATION "${CMAKE_CURRENT_BINARY_DIR}")
+    qt_add_translation(REMOTE_QM "${CMAKE_CURRENT_SOURCE_DIR}/../lang/qbittorrent_ru.ts")
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/remote-lang.qrc"
+        "<RCC><qresource prefix=\"/translations\"><file alias=\"qbittorrent_ru.qm\">${CMAKE_CURRENT_BINARY_DIR}/qbittorrent_ru.qm</file></qresource></RCC>")
+    target_sources(qbittorrent-remote PRIVATE ${REMOTE_QM} "${CMAKE_CURRENT_BINARY_DIR}/remote-lang.qrc")
+    if(REMOTE_TESTING)
+        target_sources(test_remote PRIVATE ${REMOTE_QM} "${CMAKE_CURRENT_BINARY_DIR}/remote-lang.qrc")
+        target_compile_definitions(test_remote PRIVATE REMOTE_HAS_TRANSLATIONS)
+    endif()
 endif()
 install(TARGETS qbittorrent-remote RUNTIME DESTINATION bin)

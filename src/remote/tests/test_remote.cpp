@@ -7,11 +7,18 @@
 #include <QNetworkReply>
 #include <QPersistentModelIndex>
 #include <QSignalSpy>
-#include <QTableView>
-#include <QTableWidget>
+#include <QTreeView>
+#include <QLabel>
+#include <QGroupBox>
+#include <QStackedWidget>
+#include <QPushButton>
 #include <QTest>
+#include <QTranslator>
+#include <QTemporaryDir>
+#include <QSettings>
 
 #include "client.h"
+#include "properties.h"
 #include "torrentmodel.h"
 #include "window.h"
 
@@ -109,7 +116,22 @@ namespace
 class TestRemote final : public QObject
 {
     Q_OBJECT
+    QTemporaryDir m_settingsDirectory;
 private slots:
+    void initTestCase()
+    {
+        QVERIFY(m_settingsDirectory.isValid());
+        QCoreApplication::setOrganizationName(u"qBittorrentRemoteTests"_s);
+        QCoreApplication::setApplicationName(u"isolated"_s);
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, m_settingsDirectory.path());
+    }
+
+    void init()
+    {
+        QSettings().clear();
+    }
+
     void modelMergesDeltasAndPreservesSelection()
     {
         TorrentModel model;
@@ -285,9 +307,9 @@ private slots:
         window.show();
         window.client()->connectToServer(keyConnection());
         QTRY_VERIFY(window.client()->isConnected());
-        auto *table = window.findChild<QTableView *>(u"remoteTorrentTable"_s);
+        auto *table = window.findChild<QTreeView *>(u"remoteTorrentTable"_s);
         QTRY_COMPARE(table->model()->rowCount(), 2);
-        table->selectRow(0);
+        table->selectionModel()->select(table->model()->index(0, 0), QItemSelectionModel::Select | QItemSelectionModel::Rows);
         auto *stop = window.findChild<QAction *>(u"actionStop"_s);
         QVERIFY(stop->isEnabled());
         stop->trigger();
@@ -298,10 +320,12 @@ private slots:
             if (sent.request.url().path().endsWith(u"torrents/stop"))
                 QCOMPARE(sent.body, QByteArray("hashes=def")); // Sorted by name, not source row.
         }
-        const auto *general = window.findChild<QTableWidget *>(u"remoteDetails0"_s);
-        QVERIFY(general);
-        QTRY_COMPARE(general->rowCount(), 12);
-        QCOMPARE(general->item(0, 1)->text(), u"/srv/downloads"_s);
+        const auto *savePath = window.findChild<QLabel *>(u"labelSavePathVal"_s);
+        QVERIFY(savePath);
+        QTRY_COMPARE(savePath->text(), u"/srv/downloads"_s);
+        QVERIFY(window.findChild<QGroupBox *>(u"groupTransferBox"_s));
+        QVERIFY(window.findChild<QGroupBox *>(u"groupInfosBox"_s));
+        QVERIFY(!table->rootIsDecorated());
         const QString screenshot = qEnvironmentVariable("REMOTE_SCREENSHOT_PATH");
         if (!screenshot.isEmpty())
             QVERIFY(window.grab().save(screenshot));
@@ -310,14 +334,87 @@ private slots:
         QCOMPARE(table->model()->rowCount(), 0);
     }
 
+    void propertiesReuseOriginalGroupsAndHierarchicalContent()
+    {
+        Properties panel;
+        panel.resize(1000, 500);
+        panel.show();
+        panel.setTorrent(QJsonObject {{u"hash"_s, u"first"_s}, {u"progress"_s, 0.5}});
+        panel.setData(0, QJsonDocument(QJsonObject {{u"save_path"_s, u"/srv/first"_s}, {u"comment"_s, u"<b>Literal metadata</b>"_s}}));
+        QCOMPARE(panel.findChild<QLabel *>(u"labelSavePathVal"_s)->text(), u"/srv/first"_s);
+        QCOMPARE(panel.findChild<QLabel *>(u"labelCommentVal"_s)->textFormat(), Qt::PlainText);
+        auto *stack = panel.findChild<QStackedWidget *>(u"stackedProperties"_s);
+        QVERIFY(stack);
+        auto buttons = panel.findChildren<QPushButton *>();
+        QPushButton *content = nullptr;
+        for (auto *button : buttons)
+        {
+            if (button->text() == u"Content")
+                content = button;
+        }
+        QVERIFY(content);
+        QVERIFY(content->mapTo(&panel, QPoint()).y() >= stack->geometry().bottom());
+        content->click();
+        QCOMPARE(panel.currentIndex(), 4);
+        const auto files = QJsonDocument::fromJson(R"([
+            {"name":"root/video/a.mkv","size":100,"progress":0.5,"priority":1},
+            {"name":"root/video/b.mkv","size":200,"progress":1,"priority":0}])");
+        panel.setData(4, files);
+        auto *tree = panel.findChild<QTreeView *>(u"remoteContent"_s);
+        QVERIFY(tree);
+        QCOMPARE(tree->model()->rowCount(), 1);
+        const auto root = tree->model()->index(0, 0);
+        QCOMPARE(root.data().toString(), u"root"_s);
+        const auto folder = tree->model()->index(0, 0, root);
+        QCOMPARE(folder.data().toString(), u"video"_s);
+        QCOMPARE(tree->model()->rowCount(folder), 2);
+        QCOMPARE(tree->model()->index(0, 0, folder).data().toString(), u"a.mkv"_s);
+        panel.setTorrent(QJsonObject {{u"hash"_s, u"second"_s}});
+        QVERIFY(panel.findChild<QLabel *>(u"labelSavePathVal"_s)->text().isEmpty());
+    }
+
+    void stateAndPathFiltersWorkTogether()
+    {
+        TorrentModel model;
+        model.applySync(QJsonObject {{u"full_update"_s, true}, {u"torrents"_s, QJsonObject {
+            {u"a"_s, QJsonObject {{u"name"_s, u"First"_s}, {u"save_path"_s, u"/srv/video"_s}, {u"progress"_s, 0.5}, {u"state"_s, u"downloading"_s}}},
+            {u"b"_s, QJsonObject {{u"name"_s, u"Second"_s}, {u"save_path"_s, u"/srv/music"_s}, {u"progress"_s, 1}, {u"state"_s, u"stoppedUP"_s}}}}}});
+        TorrentFilter filter;
+        filter.setSourceModel(&model);
+        filter.setFilters(u"video"_s, u"downloading"_s, {}, {}, 26);
+        QCOMPARE(filter.rowCount(), 1);
+        QCOMPARE(filter.index(0, 1).data().toString(), u"First"_s);
+        filter.setFilters({}, u"stopped"_s, {}, {});
+        QCOMPARE(filter.rowCount(), 1);
+        QCOMPARE(filter.index(0, 1).data().toString(), u"Second"_s);
+    }
+
+#ifdef REMOTE_HAS_TRANSLATIONS
+    void originalRussianCatalogTranslatesNativeForms()
+    {
+        QTranslator translator;
+        QVERIFY(translator.load(u":/translations/qbittorrent_ru.qm"_s));
+        QCoreApplication::installTranslator(&translator);
+        {
+            Properties panel;
+            const auto *group = panel.findChild<QGroupBox *>(u"groupTransferBox"_s);
+            QVERIFY(group);
+            QCOMPARE(group->title(), u"Торрент"_s);
+            TorrentModel model;
+            QCOMPARE(model.headerData(1, Qt::Horizontal, Qt::DisplayRole).toString(), u"Имя"_s);
+        }
+        QCoreApplication::removeTranslator(&translator);
+    }
+#endif
+
     void nativeWindowStartsDisconnected()
     {
         Window window;
-        auto *table = window.findChild<QTableView *>(u"remoteTorrentTable"_s);
+        auto *table = window.findChild<QTreeView *>(u"remoteTorrentTable"_s);
         QVERIFY(table);
         QCOMPARE(table->model()->columnCount(), 38);
         auto *start = window.findChild<QAction *>(u"actionStart"_s);
-        auto *options = window.findChild<QAction *>(u"actionOptions"_s);
+        auto *options = window.findChild<QAction *>(u"actionConnectRemote"_s);
         QVERIFY(start);
         QVERIFY(options);
         QVERIFY(!start->isEnabled());

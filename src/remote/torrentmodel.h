@@ -36,15 +36,18 @@ namespace Remote
     public:
         using QSortFilterProxyModel::QSortFilterProxyModel;
         void setFilters(const QString &text, const QString &state, const QString &category,
-            const QString &tag);
+            const QString &tag, int column = 1, const QString &tracker = {});
+        static bool acceptsState(const QJsonObject &torrent, const QString &state);
 
     protected:
         bool filterAcceptsRow(int row, const QModelIndex &parent) const override;
 
     private:
+        int m_filterColumn = 1;
         QString m_text;
         QString m_state;
         QString m_category;
         QString m_tag;
+        QString m_tracker;
     };
 }

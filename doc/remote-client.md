@@ -33,18 +33,27 @@ kept in process memory only and must be entered on the next launch.
 
 ## Implemented
 
-- Original main-window menus/toolbar, Transfers layout, native sortable table,
-  progress bars, rearrangeable/hideable columns, multi-selection and shortcuts.
+- Original main-window menus/toolbar, a native QTreeView torrent list, upstream
+  progress-bar painter, original default state colors/icons, rearrangeable/hideable
+  columns, multi-selection and shortcuts. The filter is in the toolbar.
+- Upstream PropertiesWidget form with the original Transfer/Information groups,
+  upstream property-tab button bar at the bottom, and upstream collapsible sidebar
+  section headers. The sidebar spans the full height of the transfers area.
+- Russian localization reuses the upstream catalog when Qt LinguistTools is
+  installed (included by the Windows workflow). The system language is used by
+  default; View > Language selects English/Russian for the next launch.
 - All 38 upstream torrent-list columns, populated from Web API data when present.
 - Incremental `/sync/maindata` polling, preserving existing row indexes and
   selections; full snapshots remove obsolete fields and rows on reconnect.
-- Status, category and tag filters, plus case-insensitive torrent-name search.
+- Independent status, category, tag and tracker filters with counts, plus
+  case-insensitive torrent-name/server-path search.
 - Start, stop, force start, recheck, reannounce, queue-position commands.
 - Add local `.torrent` files or magnet/HTTP(S) URLs. The optional download path
   is a literal path on the **server**.
 - Remove torrents; server content deletion is unchecked by default and requires
   a confirmation in the application.
-- General properties and read-only Trackers, Peers and Content tabs.
+- Original General property layout, read-only Trackers/Peers/HTTP Sources, and
+  a hierarchical Content view. Changing the selected torrent clears stale data.
 - Connection state, session transfer rates and server free space.
 - API-key/password authentication, reverse proxy prefixes, request timeouts,
   manual reconnect and exponential retry for interrupted reads. Redirects are
@@ -54,16 +63,17 @@ kept in process memory only and must be entered on the next launch.
 
 ## Explicit first-preview limitations
 
-This reuses the upstream **window form and resources**, not the full existing
-`MainWindow` implementation or its session-bound widgets. The remote model and
-controller are new. The original desktop executable and local mode are unchanged.
-Implementing `Session`/`Torrent` adapters and converging the widget implementations
-remains a possible later refactor; this preview does not claim complete parity.
+This reuses upstream **main-window/property forms, button bars, sidebar headers,
+progress painting and resources**, with remote data binding. It does not yet reuse
+all session-bound widget controllers or the full `MainWindow` implementation.
+The remote data model and controller are new; complete GUI parity is not claimed.
 
-The details tables are currently read-only and differ from the original property
-panels. Settings, RSS, search plugins, torrent creation, session pause, statistics,
-tray integration, full add-torrent options and other unported actions are disabled.
-Existing translations do not yet cover the new remote frontend.
+Trackers, peers and content are still read-only. Settings, RSS, search plugins,
+torrent creation, session pause, statistics, tray integration, speed graphs and
+full add-torrent options remain unported. Connect to Server is in the File menu;
+the original Options action keeps its label and stays disabled until ported.
+Custom qbtheme files and the local client's appearance preferences are not yet
+imported. Some new remote-specific dialogs still use English strings.
 Path translation, opening server files, and browsing server directories are deferred.
 No remote server shutdown command is sent when closing the client.
 
