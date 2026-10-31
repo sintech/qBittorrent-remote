@@ -1,0 +1,74 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+#pragma once
+
+#include <memory>
+
+#include <QJsonObject>
+#include <QMainWindow>
+#include <QTimer>
+
+#include "client.h"
+#include "torrentmodel.h"
+
+class QJsonDocument;
+class QCloseEvent;
+class QLineEdit;
+class QTableView;
+class QTableWidget;
+class QTreeWidget;
+class QLabel;
+class QSplitter;
+class QTabWidget;
+
+namespace Ui { class MainWindow; }
+
+namespace Remote
+{
+    class Window final : public QMainWindow
+    {
+        Q_OBJECT
+
+    public:
+        explicit Window(QWidget *parent = nullptr, QNetworkAccessManager *network = nullptr);
+        ~Window() override;
+        Client *client();
+
+    public slots:
+        void showConnectionDialog();
+
+    protected:
+        void closeEvent(QCloseEvent *event) override;
+
+    private:
+        QStringList selectedHashes() const;
+        void applySync(const QJsonObject &sync);
+        void updateActions();
+        void updateFilters();
+        void refreshDetails();
+        void runCommand(const QString &method, QUrlQuery parameters = {});
+        void removeSelected();
+        void addFiles();
+        void addLinks();
+        void showContextMenu(const QPoint &position);
+        void fillDetails(int tab, const QJsonDocument &document);
+
+        std::unique_ptr<Ui::MainWindow> m_ui;
+        Client m_client;
+        TorrentModel m_model;
+        TorrentFilter m_filter;
+        QTableView *m_table = nullptr;
+        QLineEdit *m_search = nullptr;
+        QTreeWidget *m_sidebar = nullptr;
+        QSplitter *m_horizontal = nullptr;
+        QSplitter *m_vertical = nullptr;
+        QTabWidget *m_properties = nullptr;
+        QList<QTableWidget *> m_details;
+        QLabel *m_status = nullptr;
+        QLabel *m_rates = nullptr;
+        QTimer m_detailsTimer;
+        QJsonObject m_categories;
+        QSet<QString> m_tags;
+        QJsonObject m_serverState;
+        quint64 m_detailGeneration = 0;
+    };
+}

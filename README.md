@@ -1,3 +1,5 @@
+> **Remote frontend preview:** see [build instructions and current limitations](doc/remote-client.md). Targets qBittorrent 5.2.x.
+
 qBittorrent - A BitTorrent client in Qt
 ------------------------------------------
 

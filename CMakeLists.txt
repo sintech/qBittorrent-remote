@@ -14,6 +14,16 @@ set(minLibtorrent1Version 1.2.19)
 set(minLibtorrentVersion 2.0.10)
 set(minZlibVersion 1.2.11)
 
+# Build the remote preview without the local libtorrent engine or its dependencies.
+option(REMOTE_ONLY "Build only the native remote frontend preview" OFF)
+if(REMOTE_ONLY)
+    if(REMOTE_TESTING)
+        enable_testing()
+    endif()
+    add_subdirectory(src/remote)
+    return()
+endif()
+
 include(GNUInstallDirs)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules)
