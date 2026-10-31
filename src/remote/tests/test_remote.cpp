@@ -641,6 +641,14 @@ private slots:
         QVERIFY(remoteFilePath(u"/srv/downloads"_s, u"../private/key"_s).isEmpty());
         QVERIFY(remoteFilePath(u"/srv/downloads"_s, u"/etc/passwd"_s).isEmpty());
         QCOMPARE(normalizedPath(u"C:"_s), u"C:"_s);
+        QJsonObject torrent {{u"save_path"_s, u"/finished"_s}, {u"content_path"_s, u"/incomplete/video/movie.mkv"_s}};
+        QCOMPARE(remoteStoragePath(torrent, {u"video/movie.mkv"_s}), u"/incomplete"_s);
+        torrent[u"content_path"_s] = u"/incomplete/video"_s;
+        QCOMPARE(remoteStoragePath(torrent, {u"video/a.mkv"_s, u"video/sub/b.mkv"_s}), u"/incomplete"_s);
+        torrent[u"content_path"_s] = u"/incomplete"_s;
+        QCOMPARE(remoteStoragePath(torrent, {u"a.mkv"_s, u"b.mkv"_s}), u"/incomplete"_s);
+        torrent[u"content_path"_s] = u"/movie.mkv"_s;
+        QCOMPARE(remoteStoragePath(torrent, {u"movie.mkv"_s}), u"/"_s);
     }
 
     void profilesPersistAndRejectInvalidReplacements()

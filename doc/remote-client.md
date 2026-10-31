@@ -54,7 +54,8 @@ are case-insensitive. Use an absolute local drive path or accessible UNC share.
 Mappings change only local open operations, never paths sent to the server.
 
 Double-click a file/folder in **Content**, or press Enter, to open its mapped local
-counterpart with the default Windows application. The torrent context menu's
+counterpart with the default Windows application. The API content path is used
+to account for a separate incomplete-download storage directory. The torrent context menu's
 original **Open destination folder** action opens the mapped content directory
 (or a file's parent). Missing mappings or local files produce an explanatory
 message. Editing an active profile's mappings applies immediately. Changing its

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "profiles.h"
+#include "base/path.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -99,6 +100,26 @@ QString Remote::normalizedPath(const QString &value)
     if (unc && !path.startsWith(u"//")) path.prepend(u'/');
     if (driveAbsolute && path.size() == 2 && path[1] == u':') path += u'/';
     return path;
+}
+
+QString Remote::remoteStoragePath(const QJsonObject &torrent, const QStringList &files)
+{
+    const QString fallback = torrent.value(u"save_path"_s).toString();
+    const QString actual = torrent.value(u"content_path"_s).toString();
+    if (actual.isEmpty() || files.isEmpty()) return fallback;
+    PathList paths;
+    for (const auto &file : files) paths.append(Path(file));
+    // The server computes content_path with the same upstream root-folder helper.
+    const QString relative = files.size() == 1 ? files.first() : Path::findRootFolder(paths).toString();
+    const QString content = normalizedPath(actual);
+    if (relative.isEmpty()) return content;
+    const QString suffix = u'/' + normalizedPath(relative);
+    const auto sensitivity = windowsPath(content) ? Qt::CaseInsensitive : Qt::CaseSensitive;
+    if (!content.endsWith(suffix, sensitivity)) return fallback;
+    QString root = content.first(content.size() - suffix.size());
+    if (root.isEmpty()) root = u"/"_s;
+    if (root.size() == 2 && root[1] == u':') root += u'/';
+    return root;
 }
 
 QString Remote::remoteFilePath(const QString &directory, const QString &relativePath)

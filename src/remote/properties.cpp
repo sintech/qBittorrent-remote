@@ -136,7 +136,7 @@ Properties::Properties(QWidget *parent)
     const auto openFile = [this](const QModelIndex &index)
     {
         const QString relative = index.siblingAtColumn(0).data(KeyRole).toString();
-        const QString path = remoteFilePath(m_torrent.value(u"save_path"_s).toString(), relative);
+        const QString path = remoteFilePath(remoteStoragePath(m_torrent, m_filePaths), relative);
         if (!path.isEmpty()) emit openPathRequested(path);
     };
     connect(m_ui->filesList, &QTreeView::doubleClicked, this, openFile);
@@ -181,6 +181,7 @@ bool Properties::isPanelVisible() const
 void Properties::clear()
 {
     m_torrent = {};
+    m_filePaths.clear();
     for (auto *label : findChildren<QLabel *>())
     {
         if (label->objectName().endsWith(u"Val"))
@@ -344,13 +345,15 @@ void Properties::showGeneral(const QJsonObject &properties)
 
 void Properties::showContent(const QJsonArray &files)
 {
+    m_filePaths.clear();
     QFileIconProvider icons;
     QSet<QString> wanted;
     auto *root = m_files->invisibleRootItem();
     for (const auto value : files)
     {
         const auto file = value.toObject();
-        const auto parts = file.value(u"name"_s).toString().split(u'/');
+        m_filePaths.append(file.value(u"name"_s).toString());
+        const auto parts = m_filePaths.last().split(u'/');
         QStandardItem *parent = root;
         QString path;
         for (int i = 0; i + 1 < parts.size(); ++i)

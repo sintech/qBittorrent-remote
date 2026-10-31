@@ -2,6 +2,7 @@
 #pragma once
 #include <QList>
 #include <QString>
+#include <QStringList>
 #include "client.h"
 
 namespace Remote
@@ -27,6 +28,7 @@ namespace Remote
     };
 
     QString normalizedPath(const QString &path);
+    QString remoteStoragePath(const QJsonObject &torrent, const QStringList &files);
     QString remoteFilePath(const QString &directory, const QString &relativePath);
     bool validServerUrl(const QUrl &url);
 

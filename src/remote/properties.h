@@ -48,5 +48,6 @@ namespace Remote
         PeerListWidget *m_peers = nullptr;
         QStandardItemModel *m_files = nullptr;
         QJsonObject m_torrent;
+        QStringList m_filePaths;
     };
 }
