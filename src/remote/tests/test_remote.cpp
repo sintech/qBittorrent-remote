@@ -14,11 +14,21 @@
 #include <QPushButton>
 #include <QTest>
 #include <QTranslator>
+#include <QComboBox>
+#include <QHeaderView>
+#include <QMenu>
+#include <QLocale>
+#include <QStandardItemModel>
+#include <QAbstractItemView>
 #include <QTemporaryDir>
 #include <QSettings>
 
 #include "client.h"
 #include "properties.h"
+#include "gui/propertylistviews.h"
+#include "gui/properties/speedwidget.h"
+#include "gui/properties/speedplotview.h"
+#include "gui/properties/downloadedpiecesbar.h"
 #include "torrentmodel.h"
 #include "window.h"
 
@@ -121,6 +131,7 @@ private slots:
     void initTestCase()
     {
         QVERIFY(m_settingsDirectory.isValid());
+        QLocale::setDefault(QLocale(u"en_US"_s));
         QCoreApplication::setOrganizationName(u"qBittorrentRemoteTests"_s);
         QCoreApplication::setApplicationName(u"isolated"_s);
         QSettings::setDefaultFormat(QSettings::IniFormat);
@@ -302,6 +313,7 @@ private slots:
             "server_state":{"dl_info_speed":4194304,"up_info_speed":2621440,"free_space_on_disk":107374182400}})";
         network.responses.insert(u"/qbt/api/v2/torrents/properties"_s,
             {R"({"save_path":"/srv/downloads","total_size":104857600,"total_downloaded":104857600,"total_uploaded":220200960,"dl_speed":0,"up_speed":2097152,"share_ratio":2.1,"time_elapsed":7200,"nb_connections":8,"piece_size":262144,"created_by":"Example","comment":"Remote properties"})"});
+        network.responses.insert(u"/qbt/api/v2/torrents/pieceStates"_s, {"[2,2,2,2]"});
         Window window(nullptr, &network);
         window.resize(1150, 760);
         window.show();
@@ -371,6 +383,77 @@ private slots:
         QCOMPARE(tree->model()->index(0, 0, folder).data().toString(), u"a.mkv"_s);
         panel.setTorrent(QJsonObject {{u"hash"_s, u"second"_s}});
         QVERIFY(panel.findChild<QLabel *>(u"labelSavePathVal"_s)->text().isEmpty());
+    }
+
+    void nativePiecesStripExpandsAndSpeedUsesServerSamples()
+    {
+        Properties panel;
+        panel.resize(1000, 600);
+        panel.show();
+        auto *strip = panel.findChild<DownloadedPiecesBar *>(u"remotePieceStrip"_s);
+        QVERIFY(strip);
+        QCOMPARE(strip->sizePolicy().horizontalPolicy(), QSizePolicy::Expanding);
+        QTRY_VERIFY(strip->width() > panel.width() * 0.7);
+        panel.setData(6, QJsonDocument(QJsonArray {2, 2, 1, 0, 0}));
+        auto *speed = panel.findChild<SpeedWidget *>(u"remoteSpeedWidget"_s);
+        QVERIFY(speed);
+        auto *plot = speed->findChild<SpeedPlotView *>();
+        QVERIFY(plot);
+        QPushButton *button = nullptr;
+        for (auto *candidate : panel.findChildren<QPushButton *>())
+            if (candidate->text() == u"Speed") button = candidate;
+        QVERIFY(button);
+        QVERIFY(button->isEnabled());
+        button->click();
+        QCOMPARE(panel.currentIndex(), 5);
+        panel.pushStats(QJsonObject {{u"up_info_speed"_s, 1024}, {u"dl_info_speed"_s, 4096}});
+        QTest::qWait(1100);
+        panel.pushStats(QJsonObject {{u"up_info_speed"_s, 1024}, {u"dl_info_speed"_s, 4096}});
+        QTest::qWait(1100);
+        panel.pushStats(QJsonObject {{u"up_info_speed"_s, 1024}, {u"dl_info_speed"_s, 4096}});
+        QVERIFY(plot->sampleCount() >= 2);
+        QCOMPARE(plot->peakValue(), quint64(4096));
+        const auto before = plot->sampleCount();
+        panel.setTorrent(QJsonObject {{u"hash"_s, u"another"_s}});
+        QCOMPARE(plot->sampleCount(), before); // Session graph survives torrent selection.
+        auto *period = speed->findChild<QComboBox *>(u"speedPeriod"_s);
+        QVERIFY(period);
+        QCOMPARE(period->count(), 7);
+        period->setCurrentIndex(1);
+        QCOMPARE(plot->peakValue(), quint64(4096));
+        const auto screenshot = qEnvironmentVariable("REMOTE_SCREENSHOT_PATH");
+        if (!screenshot.isEmpty()) QVERIFY(panel.grab().save(screenshot + u".speed.png"));
+        panel.resetSpeedHistory();
+        QCOMPARE(plot->sampleCount(), qsizetype(0));
+    }
+
+    void sharedPropertyViewsHaveNativeColumnsAndStableRows()
+    {
+        Properties panel;
+        auto *trackers = panel.findChild<TrackerListView *>(u"remoteTrackers"_s);
+        auto *peers = panel.findChild<PeerListView *>(u"remotePeers"_s);
+        auto *content = panel.findChild<TorrentContentView *>(u"remoteContent"_s);
+        QVERIFY(trackers);
+        QVERIFY(peers);
+        QVERIFY(content);
+        QCOMPARE(trackers->model()->columnCount(), 11);
+        QCOMPARE(trackers->model()->headerData(0, Qt::Horizontal).toString(), u"URL/Announce Endpoint"_s);
+        QCOMPARE(peers->model()->columnCount(), 15);
+        QCOMPARE(peers->model()->headerData(1, Qt::Horizontal).toString(), u"IP/Address"_s);
+        QCOMPARE(content->model()->columnCount(), 6);
+        panel.setData(1, QJsonDocument::fromJson("[\n            {\"url\":\"** [DHT] **\",\"status\":2}, {\"url\":\"** [PeX] **\",\"status\":2}, {\"url\":\"** [LSD] **\",\"status\":2},\n            {\"url\":\"https://tracker.test/announce\",\"tier\":0,\"status\":2,\"endpoints\":[{\"name\":\"192.0.2.1:443\",\"status\":2,\"bt_version\":1}]}]"));
+        QCOMPARE(trackers->model()->rowCount(), 4);
+        QCOMPARE(trackers->model()->rowCount(trackers->model()->index(3, 0)), 1);
+        panel.setData(2, QJsonDocument::fromJson("{\"peers\":{\n            \"a\":{\"ip\":\"10.0.0.10\",\"port\":100,\"client\":\"A\",\"dl_speed\":20},\n            \"b\":{\"ip\":\"10.0.0.2\",\"port\":20,\"client\":\"B\",\"dl_speed\":100}}}"));
+        peers->sortByColumn(PeerListView::PORT, Qt::AscendingOrder);
+        QCOMPARE(peers->model()->index(0, PeerListView::PORT).data(Qt::UserRole).toInt(), 20);
+        peers->sortByColumn(PeerListView::IP, Qt::AscendingOrder);
+        QCOMPARE(peers->model()->index(0, PeerListView::IP).data().toString(), u"10.0.0.2"_s);
+        QPersistentModelIndex selected(peers->model()->index(0, PeerListView::IP));
+        panel.setData(2, QJsonDocument::fromJson("{\"peers\":{\n            \"a\":{\"ip\":\"10.0.0.10\",\"port\":100,\"client\":\"A\",\"dl_speed\":30},\n            \"b\":{\"ip\":\"10.0.0.2\",\"port\":20,\"client\":\"B\",\"dl_speed\":200}}}"));
+        QVERIFY(selected.isValid());
+        QCOMPARE(selected.data().toString(), u"10.0.0.2"_s);
+        QCOMPARE(peers->header()->stretchLastSection(), false);
     }
 
     void stateAndPathFiltersWorkTogether()

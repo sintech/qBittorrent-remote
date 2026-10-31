@@ -8,8 +8,12 @@
 #include <QWidget>
 
 class PropTabBar;
+class SpeedWidget;
+class DownloadedPiecesBar;
+class PieceAvailabilityBar;
 class QStandardItemModel;
-class QTreeWidget;
+class PeerListView;
+class TrackerListView;
 
 namespace Ui { class PropertiesWidget; }
 
@@ -24,6 +28,8 @@ namespace Remote
         int currentIndex() const;
         bool isPanelVisible() const;
         void clear();
+        void pushStats(const QJsonObject &state);
+        void resetSpeedHistory();
         void setTorrent(const QJsonObject &torrent);
         void setData(int tab, const QJsonDocument &data);
 
@@ -34,9 +40,12 @@ namespace Remote
         void showGeneral(const QJsonObject &properties);
         void showContent(const QJsonArray &files);
         std::unique_ptr<Ui::PropertiesWidget> m_ui;
+        SpeedWidget *m_speed = nullptr;
+        DownloadedPiecesBar *m_progress = nullptr;
+        PieceAvailabilityBar *m_availability = nullptr;
         PropTabBar *m_tabs = nullptr;
-        QTreeWidget *m_trackers = nullptr;
-        QTreeWidget *m_peers = nullptr;
+        TrackerListView *m_trackers = nullptr;
+        PeerListView *m_peers = nullptr;
         QStandardItemModel *m_files = nullptr;
         QJsonObject m_torrent;
     };

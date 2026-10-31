@@ -32,7 +32,9 @@
 #include <array>
 #include <chrono>
 
-#ifndef Q_MOC_RUN
+#if defined(QBT_REMOTE_CLIENT)
+#include <deque>
+#elif !defined(Q_MOC_RUN)
 #include <boost/circular_buffer.hpp>
 #endif
 
@@ -86,6 +88,10 @@ public:
     void setPeriod(TimePeriod period);
 
     void pushPoint(const SampleData &point);
+    void clearHistory();
+    qsizetype sampleCount() const;
+    quint64 peakValue() const;
+    void setRefreshInterval(int milliseconds);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -97,14 +103,26 @@ private:
         SampleData data;
     };
 
+#ifdef QBT_REMOTE_CLIENT
+    class DataCircularBuffer : public std::deque<Sample>
+    {
+    public:
+        explicit DataCircularBuffer(size_t capacity = 0) : m_capacity(capacity) {}
+        size_t capacity() const { return m_capacity; }
+    private:
+        size_t m_capacity;
+    };
+#else
     using DataCircularBuffer = boost::circular_buffer<Sample>;
+#endif
 
     class Averager
     {
     public:
         Averager(milliseconds duration, milliseconds resolution);
 
-        bool push(const SampleData &sampleData); // returns true if there is new data to display
+        bool push(const SampleData &sampleData, milliseconds updateInterval); // true if new data is ready
+        void clear();
 
         const DataCircularBuffer &data() const;
 
@@ -139,5 +157,6 @@ private:
     Averager *m_currentAverager {&m_averager5Min};
 
     QMap<GraphID, GraphProperties> m_properties;
-    milliseconds m_currentMaxDuration {0};
+    milliseconds m_currentMaxDuration {1min};
+    int m_refreshInterval = 1500;
 };

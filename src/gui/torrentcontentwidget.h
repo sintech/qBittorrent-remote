@@ -29,7 +29,7 @@
 
 #pragma once
 
-#include <QTreeView>
+#include "gui/propertylistviews.h"
 
 #include "base/bittorrent/downloadpriority.h"
 #include "base/pathfwd.h"
@@ -47,7 +47,7 @@ namespace BitTorrent
 class TorrentContentFilterModel;
 class TorrentContentModel;
 
-class TorrentContentWidget final : public QTreeView
+class TorrentContentWidget final : public TorrentContentView
 {
     Q_OBJECT
     Q_DISABLE_COPY_MOVE(TorrentContentWidget)

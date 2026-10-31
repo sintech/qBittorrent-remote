@@ -36,16 +36,20 @@
 #include <QList>
 
 #include "base/global.h"
+#ifndef QBT_REMOTE_CLIENT
 #include "gui/uithememanager.h"
+#endif
 
 namespace
 {
     QColor dlPieceColor(const QColor &pieceColor)
     {
+#ifndef QBT_REMOTE_CLIENT
         const QColor color = UIThemeManager::instance()->getColor(u"PiecesBar.PartialPiece"_s);
         if (color.isValid())
             return color;
 
+#endif
         const QColor green {Qt::green};
         return QColor::fromHsl(green.hslHue(), pieceColor.hslSaturation(), pieceColor.lightness());
     }

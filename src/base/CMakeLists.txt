@@ -210,6 +210,7 @@ add_library(qbt_base STATIC
     utils/fs.cpp
     utils/gzip.cpp
     utils/io.cpp
+    utils/size.cpp
     utils/misc.cpp
     utils/net.cpp
     utils/number.cpp

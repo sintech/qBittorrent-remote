@@ -30,7 +30,7 @@
 #pragma once
 
 #include <QtContainerFwd>
-#include <QTreeView>
+#include "gui/propertylistviews.h"
 
 class TrackerListModel;
 
@@ -39,7 +39,7 @@ namespace BitTorrent
     class Torrent;
 }
 
-class TrackerListWidget : public QTreeView
+class TrackerListWidget : public TrackerListView
 {
     Q_OBJECT
     Q_DISABLE_COPY_MOVE(TrackerListWidget)

@@ -28,6 +28,7 @@
 
 #pragma once
 
+#include <array>
 #include <QComboBox>
 #include <QWidget>
 
@@ -60,12 +61,19 @@ class SpeedWidget : public QWidget
 
 public:
     explicit SpeedWidget(PropertiesWidget *parent);
+    explicit SpeedWidget(QWidget *parent);
+    void pushSample(const std::array<quint64, 10> &sample);
+    void clearHistory();
+    void setAvailableGraphs(const std::array<bool, 10> &available);
+
     ~SpeedWidget();
 
 private slots:
     void onPeriodChange(int period);
     void onGraphChange(int id);
+#ifndef QBT_REMOTE_CLIENT
     void update();
+#endif
 
 private:
     void loadSettings();

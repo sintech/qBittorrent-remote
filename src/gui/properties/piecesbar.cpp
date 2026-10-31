@@ -37,6 +37,8 @@
 #include <QPainterPath>
 #include <QToolTip>
 
+#include "base/global.h"
+#ifndef QBT_REMOTE_CLIENT
 #include "base/bittorrent/torrent.h"
 #include "base/bittorrent/torrentinfo.h"
 #include "base/indexrange.h"
@@ -115,6 +117,8 @@ namespace
     };
 }
 
+#endif
+
 PiecesBar::PiecesBar(QWidget *parent)
     : QWidget(parent)
 {
@@ -122,12 +126,15 @@ PiecesBar::PiecesBar(QWidget *parent)
     updateColorsImpl();
 }
 
+#ifndef QBT_REMOTE_CLIENT
 void PiecesBar::setTorrent(const BitTorrent::Torrent *torrent)
 {
     m_torrent = torrent;
     if (!m_torrent)
         clear();
 }
+
+#endif
 
 void PiecesBar::clear()
 {
@@ -171,7 +178,9 @@ void PiecesBar::mouseMoveEvent(QMouseEvent *e)
 {
     // if user pointed to a piece which is a part of a single large file,
     // we highlight the space, occupied by this file
+#ifndef QBT_REMOTE_CLIENT
     highlightFile(e->pos().x() - borderWidth);
+#endif
     base::mouseMoveEvent(e);
 }
 
@@ -217,19 +226,31 @@ void PiecesBar::redraw()
 
 QColor PiecesBar::backgroundColor() const
 {
+#ifndef QBT_REMOTE_CLIENT
     const QColor color = UIThemeManager::instance()->getColor(u"PiecesBar.MissingPiece"_s);
+#else
+    const QColor color;
+#endif
     return color.isValid() ? color : palette().color(QPalette::Active, QPalette::Base);
 }
 
 QColor PiecesBar::borderColor() const
 {
+#ifndef QBT_REMOTE_CLIENT
     const QColor color = UIThemeManager::instance()->getColor(u"PiecesBar.Border"_s);
+#else
+    const QColor color;
+#endif
     return color.isValid() ? color : palette().color(QPalette::Active, QPalette::Dark);
 }
 
 QColor PiecesBar::pieceColor() const
 {
+#ifndef QBT_REMOTE_CLIENT
     const QColor color = UIThemeManager::instance()->getColor(u"PiecesBar.Piece"_s);
+#else
+    const QColor color;
+#endif
     return color.isValid() ? color : palette().color(QPalette::Active, QPalette::Highlight);
 }
 
@@ -270,6 +291,9 @@ QRgb PiecesBar::mixTwoColors(QRgb rgb1, QRgb rgb2, float ratio)
 
 void PiecesBar::showToolTip(const QHelpEvent *e)
 {
+#ifdef QBT_REMOTE_CLIENT
+    QToolTip::showText(e->globalPos(), simpleToolTipText(), this);
+#else
     if (!m_torrent)
         return;
 
@@ -317,8 +341,10 @@ void PiecesBar::showToolTip(const QHelpEvent *e)
     }
 
     QToolTip::showText(e->globalPos(), toolTipText, this);
+#endif
 }
 
+#ifndef QBT_REMOTE_CLIENT
 void PiecesBar::highlightFile(int imagePos)
 {
     if (!m_torrent || !m_torrent->hasMetadata() || (imagePos < 0) || (imagePos >= m_image.width()))
@@ -347,6 +373,8 @@ void PiecesBar::highlightFile(int imagePos)
         update();
     }
 }
+
+#endif
 
 void PiecesBar::updateColors()
 {

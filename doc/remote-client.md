@@ -52,8 +52,16 @@ kept in process memory only and must be entered on the next launch.
   is a literal path on the **server**.
 - Remove torrents; server content deletion is unchecked by default and requires
   a confirmation in the application.
-- Original General property layout, read-only Trackers/Peers/HTTP Sources, and
-  a hierarchical Content view. Changing the selected torrent clears stale data.
+- Original General property layout with the actual upstream downloaded-pieces
+  and availability bars, stretched across the original layout.
+- Shared native Trackers/Peers/Content presentation: original column order,
+  numeric/natural sorting, tracker endpoints, content progress delegate and
+  file icons. Rows, selections and expanded folders survive polling. These
+  tables and HTTP Sources remain read-only.
+- Original SpeedWidget/SpeedPlotView with all seven time ranges. History starts
+  at connection and survives torrent selection. The API exposes payload upload/
+  download rates; unavailable overhead/DHT/tracker series are disabled. Switching
+  servers clears history.
 - Connection state, session transfer rates and server free space.
 - API-key/password authentication, reverse proxy prefixes, request timeouts,
   manual reconnect and exponential retry for interrupted reads. Redirects are
@@ -64,12 +72,13 @@ kept in process memory only and must be entered on the next launch.
 ## Explicit first-preview limitations
 
 This reuses upstream **main-window/property forms, button bars, sidebar headers,
-progress painting and resources**, with remote data binding. It does not yet reuse
+property-table presentation, piece bars, speed graph, progress painting and
+resources**, with remote data binding. It does not yet reuse
 all session-bound widget controllers or the full `MainWindow` implementation.
 The remote data model and controller are new; complete GUI parity is not claimed.
 
 Trackers, peers and content are still read-only. Settings, RSS, search plugins,
-torrent creation, session pause, statistics, tray integration, speed graphs and
+torrent creation, session pause, statistics, tray integration and
 full add-torrent options remain unported. Connect to Server is in the File menu;
 the original Options action keeps its label and stays disabled until ported.
 Custom qbtheme files and the local client's appearance preferences are not yet

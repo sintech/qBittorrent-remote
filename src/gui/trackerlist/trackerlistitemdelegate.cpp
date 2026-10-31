@@ -31,10 +31,10 @@
 #include <QModelIndex>
 #include <QPainter>
 
-#include "trackerlistmodel.h"
-#include "trackerlistwidget.h"
+#include "gui/propertylistviews.h"
+#include <QTreeView>
 
-TrackerListItemDelegate::TrackerListItemDelegate(TrackerListWidget *view)
+TrackerListItemDelegate::TrackerListItemDelegate(QTreeView *view)
     : QStyledItemDelegate(view)
     , m_view {view}
 {
@@ -50,13 +50,13 @@ void TrackerListItemDelegate::initStyleOption(QStyleOptionViewItem *option, cons
 
     switch (index.column())
     {
-    case TrackerListModel::COL_PEERS:
-    case TrackerListModel::COL_SEEDS:
-    case TrackerListModel::COL_LEECHES:
-    case TrackerListModel::COL_TIMES_DOWNLOADED:
-    case TrackerListModel::COL_MSG:
-    case TrackerListModel::COL_NEXT_ANNOUNCE:
-    case TrackerListModel::COL_MIN_ANNOUNCE:
+    case TrackerListView::COL_PEERS:
+    case TrackerListView::COL_SEEDS:
+    case TrackerListView::COL_LEECHES:
+    case TrackerListView::COL_TIMES_DOWNLOADED:
+    case TrackerListView::COL_MSG:
+    case TrackerListView::COL_NEXT_ANNOUNCE:
+    case TrackerListView::COL_MIN_ANNOUNCE:
         option->text.clear();
         break;
     default:

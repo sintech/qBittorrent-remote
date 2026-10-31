@@ -30,7 +30,7 @@
 
 #include <QHash>
 #include <QSet>
-#include <QTreeView>
+#include "gui/propertylistviews.h"
 
 class QHostAddress;
 class QStandardItem;
@@ -48,7 +48,7 @@ namespace BitTorrent
 }
 
 
-class PeerListWidget final : public QTreeView
+class PeerListWidget final : public PeerListView
 {
     Q_OBJECT
     Q_DISABLE_COPY_MOVE(PeerListWidget)

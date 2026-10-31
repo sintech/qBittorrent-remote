@@ -6,6 +6,7 @@ on:
     paths:
       - 'src/remote/**'
       - 'src/gui/**'
+      - 'src/base/utils/**'
       - 'src/lang/**'
       - 'src/icons/**'
       - '.github/workflows/**'

@@ -54,17 +54,6 @@
 
 namespace
 {
-    const struct { const char *source; const char *comment; } units[] =
-    {
-        QT_TRANSLATE_NOOP3("misc", "B", "bytes"),
-        QT_TRANSLATE_NOOP3("misc", "KiB", "kibibytes (1024 bytes)"),
-        QT_TRANSLATE_NOOP3("misc", "MiB", "mebibytes (1024 kibibytes)"),
-        QT_TRANSLATE_NOOP3("misc", "GiB", "gibibytes (1024 mibibytes)"),
-        QT_TRANSLATE_NOOP3("misc", "TiB", "tebibytes (1024 gibibytes)"),
-        QT_TRANSLATE_NOOP3("misc", "PiB", "pebibytes (1024 tebibytes)"),
-        QT_TRANSLATE_NOOP3("misc", "EiB", "exbibytes (1024 pebibytes)")
-    };
-
     // return best userfriendly storage unit (B, KiB, MiB, GiB, TiB, ...)
     // use Binary prefix standards from IEC 60027-2
     // see http://en.wikipedia.org/wiki/Kilobyte
@@ -91,15 +80,6 @@ namespace
         }
         return {{value, static_cast<Utils::Misc::SizeUnit>(i)}};
     }
-}
-
-QString Utils::Misc::unitString(const SizeUnit unit, const bool isSpeed)
-{
-    const auto &unitString = units[static_cast<int>(unit)];
-    QString ret = QCoreApplication::translate("misc", unitString.source, unitString.comment);
-    if (isSpeed)
-        ret += QCoreApplication::translate("misc", "/s", "per second");
-    return ret;
 }
 
 QString Utils::Misc::friendlyUnit(const qint64 bytes, const bool isSpeed, const int precision)
@@ -129,30 +109,6 @@ QString Utils::Misc::friendlyUnitCompact(const qint64 bytes)
     return Utils::String::fromDouble(result->value, precision)
            // use only one character for unit representation
            + QChar::Nbsp + unitString(result->unit, false)[0];
-}
-
-int Utils::Misc::friendlyUnitPrecision(const SizeUnit unit)
-{
-    // friendlyUnit's number of digits after the decimal point
-    switch (unit)
-    {
-    case SizeUnit::Byte:
-        return 0;
-    case SizeUnit::KibiByte:
-    case SizeUnit::MebiByte:
-        return 1;
-    case SizeUnit::GibiByte:
-        return 2;
-    default:
-        return 3;
-    }
-}
-
-qlonglong Utils::Misc::sizeInBytes(qreal size, const Utils::Misc::SizeUnit unit)
-{
-    for (int i = 0; i < static_cast<int>(unit); ++i)
-        size *= 1024;
-    return size;
 }
 
 bool Utils::Misc::isPreviewable(const Path &filePath)

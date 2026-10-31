@@ -51,7 +51,9 @@ class PiecesBar : public QWidget
 public:
     explicit PiecesBar(QWidget *parent = nullptr);
 
+#ifndef QBT_REMOTE_CLIENT
     void setTorrent(const BitTorrent::Torrent *torrent);
+#endif
 
     virtual void clear();
 
@@ -80,7 +82,9 @@ protected:
 
 private:
     void showToolTip(const QHelpEvent*);
+#ifndef QBT_REMOTE_CLIENT
     void highlightFile(int imagePos);
+#endif
 
     virtual QString simpleToolTipText() const = 0;
     virtual QImage renderImage() = 0;

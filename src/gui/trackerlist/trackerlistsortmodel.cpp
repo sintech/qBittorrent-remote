@@ -28,18 +28,18 @@
 
 #include "trackerlistsortmodel.h"
 
-#include "trackerlistmodel.h"
+#include "gui/propertylistviews.h"
 
-TrackerListSortModel::TrackerListSortModel(TrackerListModel *model, QObject *parent)
+TrackerListSortModel::TrackerListSortModel(QAbstractItemModel *model, QObject *parent)
     : QSortFilterProxyModel(parent)
 {
     QSortFilterProxyModel::setSourceModel(model);
     setDynamicSortFilter(true);
     setSortCaseSensitivity(Qt::CaseInsensitive);
-    setSortRole(TrackerListModel::SortRole);
+    setSortRole(Qt::UserRole);
 }
 
-void TrackerListSortModel::setSourceModel(TrackerListModel *model)
+void TrackerListSortModel::setSourceModel(QAbstractItemModel *model)
 {
     QSortFilterProxyModel::setSourceModel(model);
 }
@@ -48,7 +48,7 @@ bool TrackerListSortModel::lessThan(const QModelIndex &left, const QModelIndex &
 {
     if (!left.parent().isValid() && !right.parent().isValid())
     {
-        if ((left.row() < TrackerListModel::STICKY_ROW_COUNT) || (right.row() < TrackerListModel::STICKY_ROW_COUNT))
+        if ((left.row() < TrackerListView::STICKY_ROW_COUNT) || (right.row() < TrackerListView::STICKY_ROW_COUNT))
             return ((left.row() < right.row()) && (sortOrder() == Qt::AscendingOrder));
     }
 

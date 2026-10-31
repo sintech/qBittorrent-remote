@@ -2,6 +2,8 @@
 #include "properties.h"
 
 #include <QDateTime>
+#include <QFileIconProvider>
+#include <QFileInfo>
 #include <QHeaderView>
 #include <QJsonArray>
 #include <QLabel>
@@ -10,9 +12,13 @@
 #include <QSettings>
 #include <QStandardItemModel>
 #include <QTreeView>
-#include <QTreeWidget>
+#include <QSet>
+#include "gui/propertylistviews.h"
 
 #include "gui/properties/proptabbar.h"
+#include "gui/properties/speedwidget.h"
+#include "gui/properties/downloadedpiecesbar.h"
+#include "gui/properties/pieceavailabilitybar.h"
 #include "torrentmodel.h"
 #include "ui_remoteproperties.h"
 
@@ -31,50 +37,69 @@ namespace
         return value.toInteger() > 0 ? QLocale().toString(QDateTime::fromSecsSinceEpoch(value.toInteger()), QLocale::ShortFormat) : QString();
     }
 
-    class PieceStrip final : public QWidget
-    {
-    public:
-        using QWidget::QWidget;
-        QJsonArray pieces;
-        qreal fraction = 0;
-        void paintEvent(QPaintEvent *) override
-        {
-            QPainter painter(this);
-            const QRect area = rect().adjusted(1, 1, -1, -1);
-            const QColor complete(50, 110, 220);
-            painter.fillRect(area, QColor(230, 230, 230));
-            if (pieces.isEmpty())
-                painter.fillRect(QRect(area.topLeft(), QSize(qRound(area.width() * fraction), area.height())), complete);
-            else
-            {
-                for (int x = 0; x < area.width(); ++x)
-                {
-                    const int index = qMin(int(pieces.size()) - 1, int(qint64(x) * pieces.size() / qMax(1, area.width())));
-                    const int state = pieces[index].toInt();
-                    if (state > 0)
-                    {
-                        painter.setPen(state == 2 ? complete : QColor(120, 170, 245));
-                        painter.drawLine(area.left() + x, area.top(), area.left() + x, area.bottom());
-                    }
-                }
-            }
-            painter.setPen(palette().mid().color());
-            painter.drawRect(rect().adjusted(0, 0, -1, -1));
-        }
-    };
+    constexpr int KeyRole = Qt::UserRole + 1;
 
-    QTreeWidget *createList(QWidget *parent, const QStringList &headers)
+    QStandardItem *ensureRow(QStandardItem *parent, const QString &key, int columns)
     {
-        auto *view = new QTreeWidget(parent);
-        view->setHeaderLabels(headers);
-        view->setRootIsDecorated(false);
-        view->setUniformRowHeights(true);
-        view->setSelectionMode(QAbstractItemView::ExtendedSelection);
-        view->setAllColumnsShowFocus(true);
-        view->header()->setStretchLastSection(true);
-        view->header()->setSectionsMovable(true);
-        return view;
+        for (int row = 0; row < parent->rowCount(); ++row)
+            if (parent->child(row)->data(KeyRole).toString() == key) return parent->child(row);
+        QList<QStandardItem *> items;
+        for (int column = 0; column < columns; ++column)
+        {
+            auto *item = new QStandardItem;
+            item->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+            items.append(item);
+        }
+        items.first()->setData(key, KeyRole);
+        parent->appendRow(items);
+        return items.first();
     }
+
+    void setCell(QStandardItem *row, int column, const QVariant &display, const QVariant &sort = {})
+    {
+        auto *parent = row->parent() ? row->parent() : row->model()->invisibleRootItem();
+        auto *item = parent->child(row->row(), column);
+        item->setData(display, Qt::DisplayRole);
+        item->setData(sort.isValid() ? sort : display, Qt::UserRole);
+        if (column > 0 && sort.isValid() && sort.typeId() != QMetaType::QString)
+            item->setData(QVariant::fromValue(Qt::AlignRight | Qt::AlignVCenter), Qt::TextAlignmentRole);
+    }
+
+    void removeMissing(QStandardItem *parent, const QSet<QString> &wanted)
+    {
+        for (int row = parent->rowCount() - 1; row >= 0; --row)
+            if (!wanted.contains(parent->child(row)->data(KeyRole).toString())) parent->removeRow(row);
+    }
+
+    void fillTracker(QStandardItem *row, const QJsonObject &tracker, const QString &name)
+    {
+        const auto tr = [](const char *text) { return QCoreApplication::translate("TrackerListModel", text); };
+        const int state = tracker.value(u"status"_s).toInt();
+        const QString status = tracker.value(u"updating"_s).toBool() ? tr("Updating...")
+            : state == 0 ? tr("Disabled") : state == 1 ? tr("Not contacted yet")
+            : state == 2 ? tr("Working") : state == 5 ? tr("Tracker error")
+            : state == 6 ? tr("Unreachable") : tr("Not working");
+        setCell(row, TrackerListView::COL_URL, name);
+        setCell(row, TrackerListView::COL_TIER, tracker.value(u"tier"_s).isUndefined() ? QString() : QString::number(tracker.value(u"tier"_s).toInt()), tracker.value(u"tier"_s).toVariant());
+        const auto btVersion = tracker.value(u"bt_version"_s);
+        setCell(row, TrackerListView::COL_PROTOCOL, btVersion.isUndefined() ? QString() : u"v%1"_s.arg(btVersion.toInt()));
+        setCell(row, TrackerListView::COL_STATUS, status, state);
+        const QList<QPair<int, QString>> counts {{TrackerListView::COL_PEERS, u"num_peers"_s}, {TrackerListView::COL_SEEDS, u"num_seeds"_s},
+            {TrackerListView::COL_LEECHES, u"num_leeches"_s}, {TrackerListView::COL_TIMES_DOWNLOADED, u"num_downloaded"_s}};
+        for (const auto &field : counts)
+        {
+            const auto value = tracker.value(field.second);
+            setCell(row, field.first, value.isUndefined() || value.toInteger() < 0 ? QString() : QString::number(value.toInteger()), value.toVariant());
+        }
+        setCell(row, TrackerListView::COL_MSG, tracker.value(u"msg"_s).toString());
+        for (const auto &field : {qMakePair(int(TrackerListView::COL_NEXT_ANNOUNCE), u"next_announce"_s), qMakePair(int(TrackerListView::COL_MIN_ANNOUNCE), u"min_announce"_s)})
+        {
+            const auto value = tracker.value(field.second);
+            const qint64 seconds = qMax<qint64>(0, value.toInteger() - QDateTime::currentSecsSinceEpoch());
+            setCell(row, field.first, value.isUndefined() || value.toInteger() <= 0 ? QString() : TorrentModel::duration(seconds), seconds);
+        }
+    }
+
 }
 
 Properties::Properties(QWidget *parent)
@@ -83,29 +108,43 @@ Properties::Properties(QWidget *parent)
 {
     m_ui->setupUi(this);
     setObjectName(u"remoteProperties"_s);
-    auto *progress = new PieceStrip(this);
-    progress->setObjectName(u"remotePieceStrip"_s);
-    progress->setFixedHeight(18);
+    m_progress = new DownloadedPiecesBar(this);
+    m_progress->setObjectName(u"remotePieceStrip"_s);
+    m_progress->setFixedHeight(18);
+    m_progress->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     m_ui->tempProgressBarArea->hide();
-    m_ui->groupBarLayout->addWidget(progress, 0, 1);
-    m_ui->labelPiecesAvailability->hide();
+    m_ui->groupBarLayout->addWidget(m_progress, 0, 1);
+    m_availability = new PieceAvailabilityBar(this);
+    m_availability->setFixedHeight(18);
+    m_availability->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     m_ui->tempAvailabilityBarArea->hide();
+    m_ui->groupBarLayout->addWidget(m_availability, 1, 1);
+    m_availability->hide();
+    m_ui->labelPiecesAvailability->hide();
     m_ui->labelAverageAvailabilityVal->hide();
+    m_speed = new SpeedWidget(static_cast<QWidget *>(this));
+    m_speed->setObjectName(u"remoteSpeedWidget"_s);
+    // The API reports payload rates, not protocol overhead, DHT or tracker rates.
+    std::array<bool, 10> available {};
+    available[2] = available[3] = true;
+    m_speed->setAvailableGraphs(available);
+    m_ui->speedLayout->addWidget(m_speed);
 
-    m_trackers = createList(this, {tr("#"), tr("URL"), tr("Status"), tr("Peers"), tr("Seeds"), tr("Leeches"), tr("Downloaded"), tr("Message")});
+    m_trackers = new TrackerListView(this);
     m_trackers->setObjectName(u"remoteTrackers"_s);
+    m_trackers->setHeaderSettingsKey(u"remote/trackerHeader"_s);
     m_ui->hBoxLayoutTrackers->insertWidget(0, m_trackers);
     m_ui->trackerUpButton->setIcon(QIcon(u":/icons/go-up.svg"_s));
     m_ui->trackerDownButton->setIcon(QIcon(u":/icons/go-down.svg"_s));
     m_ui->trackerUpButton->setEnabled(false);
     m_ui->trackerDownButton->setEnabled(false);
-    m_peers = createList(this, {tr("IP/Address"), tr("Port"), tr("Connection"), tr("Flags"), tr("Client"), tr("Progress"), tr("Down Speed"), tr("Up Speed"), tr("Downloaded"), tr("Uploaded"), tr("Relevance")});
+    m_peers = new PeerListView(this);
     m_peers->setObjectName(u"remotePeers"_s);
+    m_peers->setHeaderSettingsKey(u"remote/peerHeader"_s);
     m_ui->vBoxLayoutPeerPage->addWidget(m_peers);
-    m_files = new QStandardItemModel(this);
+    m_files = m_ui->filesList->sourceModel();
     m_ui->filesList->setObjectName(u"remoteContent"_s);
-    m_ui->filesList->setModel(m_files);
-    m_ui->filesList->setUniformRowHeights(true);
+    m_ui->filesList->setHeaderSettingsKey(u"remote/contentHeader"_s);
     m_ui->filesList->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_ui->selectAllButton->setEnabled(false);
     m_ui->selectNoneButton->setEnabled(false);
@@ -119,11 +158,8 @@ Properties::Properties(QWidget *parent)
         emit currentChanged(index);
     });
     connect(m_tabs, &PropTabBar::visibilityToggled, m_ui->stackedProperties, &QWidget::setVisible);
-    // A speed graph has not been ported yet; retain its position without a dead page.
-    if (auto *item = m_tabs->itemAt(m_tabs->count() - 1))
-        item->widget()->setEnabled(false);
     const int savedTab = QSettings().value(u"remote/propertiesTab"_s, 0).toInt();
-    m_tabs->setCurrentIndex((savedTab >= 0 && savedTab <= 4) ? savedTab : 0);
+    m_tabs->setCurrentIndex((savedTab >= 0 && savedTab <= 5) ? savedTab : 0);
     clear();
 }
 
@@ -147,18 +183,13 @@ void Properties::clear()
         if (label->objectName().endsWith(u"Val"))
             label->clear();
     }
-    auto *progress = static_cast<PieceStrip *>(findChild<QWidget *>(u"remotePieceStrip"_s));
-    // PieceStrip intentionally has no Q_OBJECT; locate it as QWidget and cast.
-    if (progress)
-    {
-        progress->pieces = {};
-        progress->fraction = 0;
-        progress->update();
-    }
-    m_trackers->clear();
-    m_peers->clear();
+    m_progress->clear();
+    m_availability->clear();
+    m_trackers->sourceModel()->removeRows(0, m_trackers->sourceModel()->rowCount());
+    m_peers->sourceModel()->removeRows(0, m_peers->sourceModel()->rowCount());
     m_ui->listWebSeeds->clear();
-    m_files->clear();
+    m_files->removeRows(0, m_files->rowCount());
+    m_ui->filesList->setProperty("initialized", false);
 }
 
 void Properties::setTorrent(const QJsonObject &torrent)
@@ -167,9 +198,13 @@ void Properties::setTorrent(const QJsonObject &torrent)
         clear();
     m_torrent = torrent;
     m_ui->labelProgressVal->setText(u"%1%"_s.arg(torrent.value(u"progress"_s).toDouble() * 100, 0, 'f', 1));
-    auto *progress = static_cast<PieceStrip *>(findChild<QWidget *>(u"remotePieceStrip"_s));
-    progress->fraction = torrent.value(u"progress"_s).toDouble();
-    progress->update();
+    const QString state = torrent.value(u"state"_s).toString();
+    const bool showAvailability = torrent.value(u"progress"_s).toDouble() < 1
+        && !state.startsWith(u"stopped") && !state.startsWith(u"queued") && !state.startsWith(u"checking");
+    m_availability->setVisible(showAvailability);
+    m_ui->labelPiecesAvailability->setVisible(showAvailability);
+    m_ui->labelAverageAvailabilityVal->setVisible(showAvailability);
+    m_ui->labelAverageAvailabilityVal->setText(QString::number(torrent.value(u"availability"_s).toDouble(), 'f', 3));
     m_ui->labelInfohash1Val->setText(torrent.value(u"infohash_v1"_s).toString());
     m_ui->labelInfohash2Val->setText(torrent.value(u"infohash_v2"_s).toString());
 }
@@ -180,32 +215,59 @@ void Properties::setData(const int tab, const QJsonDocument &data)
         showGeneral(data.object());
     else if (tab == 1)
     {
-        m_trackers->clear();
-        const QStringList statuses {tr("Disabled"), tr("Not contacted yet"), tr("Working"), tr("Updating..."), tr("Not working")};
+        auto *root = m_trackers->sourceModel()->invisibleRootItem();
+        QSet<QString> wanted;
         for (const auto value : data.array())
         {
-            const auto item = value.toObject();
-            const auto number = [&item](const QString &key) { const auto v = item.value(key); return v.toInteger() < 0 ? QString() : QString::number(v.toInteger()); };
-            new QTreeWidgetItem(m_trackers, {number(u"tier"_s), item.value(u"url"_s).toString(), statuses.value(item.value(u"status"_s).toInt()),
-                number(u"num_peers"_s), number(u"num_seeds"_s), number(u"num_leeches"_s), number(u"num_downloaded"_s), item.value(u"msg"_s).toString()});
+            const auto tracker = value.toObject();
+            const QString url = tracker.value(u"url"_s).toString();
+            wanted.insert(url);
+            auto *row = ensureRow(root, url, TrackerListView::COL_COUNT);
+            fillTracker(row, tracker, url);
+            QSet<QString> endpoints;
+            for (const auto value : tracker.value(u"endpoints"_s).toArray())
+            {
+                const auto endpoint = value.toObject();
+                const QString name = endpoint.value(u"name"_s).toString();
+                const QString key = name + u'|' + QString::number(endpoint.value(u"bt_version"_s).toInt());
+                endpoints.insert(key);
+                fillTracker(ensureRow(row, key, TrackerListView::COL_COUNT), endpoint, name);
+            }
+            removeMissing(row, endpoints);
         }
-        m_trackers->setColumnWidth(0, 35);
-        m_trackers->setColumnWidth(1, 350);
+        removeMissing(root, wanted);
     }
     else if (tab == 2)
     {
-        m_peers->clear();
+        auto *root = m_peers->sourceModel()->invisibleRootItem();
         const auto peers = data.object().value(u"peers"_s).toObject();
-        for (const auto value : peers)
+        QSet<QString> wanted;
+        m_peers->setColumnHidden(PeerListView::COUNTRY, !data.object().value(u"show_flags"_s).toBool());
+        for (auto it = peers.begin(); it != peers.end(); ++it)
         {
-            const auto peer = value.toObject();
-            new QTreeWidgetItem(m_peers, {peer.value(u"ip"_s).toString(), QString::number(peer.value(u"port"_s).toInt()),
-                peer.value(u"connection"_s).toString(), peer.value(u"flags"_s).toString(), peer.value(u"client"_s).toString(),
-                u"%1%"_s.arg(peer.value(u"progress"_s).toDouble() * 100, 0, 'f', 1),
-                TorrentModel::speed(peer.value(u"dl_speed"_s).toInteger()), TorrentModel::speed(peer.value(u"up_speed"_s).toInteger()),
-                TorrentModel::size(peer.value(u"downloaded"_s).toInteger()), TorrentModel::size(peer.value(u"uploaded"_s).toInteger()),
-                QString::number(peer.value(u"relevance"_s).toDouble(), 'f', 2)});
+            wanted.insert(it.key());
+            const auto peer = it.value().toObject();
+            auto *row = ensureRow(root, it.key(), PeerListView::COL_COUNT);
+            const auto country = peer.value(u"country_code"_s).toString().toLower();
+            row->setData(country.isEmpty() ? QIcon() : QIcon(u":/icons/flags/" + country + u".svg"), Qt::DecorationRole);
+            row->setToolTip(peer.value(u"country"_s).toString());
+            setCell(row, PeerListView::IP, peer.value(u"ip"_s).toString());
+            setCell(row, PeerListView::PORT, peer.value(u"port"_s).toInt());
+            setCell(row, PeerListView::CONNECTION, peer.value(u"connection"_s).toString());
+            setCell(row, PeerListView::FLAGS, peer.value(u"flags"_s).toString());
+            row->model()->item(row->row(), PeerListView::FLAGS)->setToolTip(peer.value(u"flags_desc"_s).toString());
+            setCell(row, PeerListView::CLIENT, peer.value(u"client"_s).toString());
+            setCell(row, PeerListView::PEERID_CLIENT, peer.value(u"peer_id_client"_s).toString());
+            const auto progress = peer.value(u"progress"_s).toDouble();
+            setCell(row, PeerListView::PROGRESS, u"%1%"_s.arg(progress * 100, 0, 'f', 1), progress);
+            for (const auto &field : {qMakePair(int(PeerListView::DOWN_SPEED), u"dl_speed"_s), qMakePair(int(PeerListView::UP_SPEED), u"up_speed"_s)})
+                setCell(row, field.first, TorrentModel::speed(peer.value(field.second).toInteger()), peer.value(field.second).toVariant());
+            for (const auto &field : {qMakePair(int(PeerListView::TOT_DOWN), u"downloaded"_s), qMakePair(int(PeerListView::TOT_UP), u"uploaded"_s)})
+                setCell(row, field.first, TorrentModel::size(peer.value(field.second).toInteger()), peer.value(field.second).toVariant());
+            setCell(row, PeerListView::RELEVANCE, QString::number(peer.value(u"relevance"_s).toDouble(), 'f', 2), peer.value(u"relevance"_s).toVariant());
+            setCell(row, PeerListView::DOWNLOADING_PIECE, peer.value(u"files"_s).toString());
         }
+        removeMissing(root, wanted);
     }
     else if (tab == 3)
     {
@@ -217,9 +279,22 @@ void Properties::setData(const int tab, const QJsonDocument &data)
         showContent(data.array());
     else if (tab == 6)
     {
-        auto *progress = static_cast<PieceStrip *>(findChild<QWidget *>(u"remotePieceStrip"_s));
-        progress->pieces = data.array();
-        progress->update();
+        const auto values = data.array();
+        QBitArray complete(values.size());
+        QBitArray partial(values.size());
+        for (int i = 0; i < values.size(); ++i)
+        {
+            complete.setBit(i, values[i].toInt() == 2);
+            partial.setBit(i, values[i].toInt() == 1);
+        }
+        m_progress->setProgress(complete, partial);
+    }
+    else if (tab == 7)
+    {
+        QList<int> values;
+        for (const auto value : data.array())
+            values.append(value.toInt());
+        m_availability->setAvailability(values);
     }
 }
 
@@ -266,41 +341,97 @@ void Properties::showGeneral(const QJsonObject &properties)
 
 void Properties::showContent(const QJsonArray &files)
 {
-    m_files->clear();
-    m_files->setHorizontalHeaderLabels({tr("Name"), tr("Size"), tr("Progress"), tr("Download Priority"), tr("Remaining"), tr("Availability")});
-    QHash<QString, QStandardItem *> folders;
-    folders.insert({}, m_files->invisibleRootItem());
+    QFileIconProvider icons;
+    QSet<QString> wanted;
+    auto *root = m_files->invisibleRootItem();
     for (const auto value : files)
     {
         const auto file = value.toObject();
-        // Preserve literal server-side path components; never normalize with host rules.
         const auto parts = file.value(u"name"_s).toString().split(u'/');
-        QStandardItem *parent = m_files->invisibleRootItem();
+        QStandardItem *parent = root;
         QString path;
         for (int i = 0; i + 1 < parts.size(); ++i)
         {
             path += parts[i] + u'/';
-            if (!folders.contains(path))
-            {
-                auto *folder = new QStandardItem(QIcon(u":/icons/directory.svg"_s), parts[i]);
-                parent->appendRow(folder);
-                folders.insert(path, folder);
-            }
-            parent = folders.value(path);
+            auto *folder = ensureRow(parent, path, 6);
+            setCell(folder, 0, parts[i]);
+            folder->setIcon(icons.icon(QFileIconProvider::Folder));
+            parent = folder;
         }
+        path += parts.last();
+        wanted.insert(path);
+        auto *row = ensureRow(parent, path, 6);
+        setCell(row, 0, parts.last());
+        row->setIcon(icons.icon(QFileInfo(parts.last())));
         const qint64 size = file.value(u"size"_s).toInteger();
         const qreal progress = file.value(u"progress"_s).toDouble();
         const int priority = file.value(u"priority"_s).toInt();
+        row->setData(priority ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole);
+        setCell(row, 1, TorrentModel::size(size), size);
+        setCell(row, 2, u"%1%"_s.arg(progress * 100, 0, 'f', 1), progress * 100);
         const QHash<int, QString> priorities {{0, tr("Do not download")}, {1, tr("Normal")}, {6, tr("High")}, {7, tr("Maximum")}};
-        auto *name = new QStandardItem(QIcon(u":/icons/fileicon.svg"_s), parts.last());
-        QList<QStandardItem *> row {name,
-            new QStandardItem(TorrentModel::size(size)), new QStandardItem(u"%1%"_s.arg(progress * 100, 0, 'f', 1)),
-            new QStandardItem(priorities.value(priority, QString::number(priority))), new QStandardItem(TorrentModel::size(qRound64(size * (1 - progress)))),
-            new QStandardItem(QString::number(file.value(u"availability"_s).toDouble(), 'f', 2))};
-        parent->appendRow(row);
+        setCell(row, 3, priorities.value(priority, QString::number(priority)), priority);
+        const qint64 remaining = qRound64(size * (1 - progress));
+        setCell(row, 4, TorrentModel::size(remaining), remaining);
+        setCell(row, 5, QString::number(file.value(u"availability"_s).toDouble(), 'f', 2), file.value(u"availability"_s).toVariant());
     }
-    m_ui->filesList->setColumnWidth(0, 360);
-    m_ui->filesList->setColumnWidth(1, 100);
-    m_ui->filesList->setColumnWidth(2, 100);
-    m_ui->filesList->expandAll();
+    const std::function<void(QStandardItem *)> aggregate = [&](QStandardItem *parent)
+    {
+        for (int i = parent->rowCount() - 1; i >= 0; --i)
+        {
+            auto *row = parent->child(i);
+            if (row->data(KeyRole).toString().endsWith(u'/'))
+            {
+                aggregate(row);
+                if (!row->rowCount()) { parent->removeRow(i); continue; }
+                qint64 size = 0, remaining = 0;
+                int checked = 0;
+                for (int child = 0; child < row->rowCount(); ++child)
+                {
+                    size += row->child(child, 1)->data(Qt::UserRole).toLongLong();
+                    remaining += row->child(child, 4)->data(Qt::UserRole).toLongLong();
+                    checked += row->child(child)->data(Qt::CheckStateRole).toInt() != Qt::Unchecked;
+                }
+                row->setData(checked == 0 ? Qt::Unchecked : checked == row->rowCount() ? Qt::Checked : Qt::PartiallyChecked, Qt::CheckStateRole);
+                setCell(row, 1, TorrentModel::size(size), size);
+                const qreal progress = size ? 100.0 * (size - remaining) / size : 0;
+                setCell(row, 2, u"%1%"_s.arg(progress, 0, 'f', 1), progress);
+                setCell(row, 3, tr("Mixed"), -1);
+                setCell(row, 4, TorrentModel::size(remaining), remaining);
+            }
+            else if (!wanted.contains(row->data(KeyRole).toString()))
+                parent->removeRow(i);
+        }
+    };
+    aggregate(root);
+    const std::function<void(QStandardItem *)> align = [&](QStandardItem *parent)
+    {
+        for (int i = 0; i < parent->rowCount(); ++i)
+        {
+            for (int column : {2, 3, 5}) parent->child(i, column)->setData({}, Qt::TextAlignmentRole);
+            align(parent->child(i));
+        }
+    };
+    align(root);
+    if (!m_ui->filesList->property("initialized").toBool())
+    {
+        m_ui->filesList->setColumnWidth(0, 360);
+        m_ui->filesList->setColumnWidth(1, 100);
+        m_ui->filesList->setColumnWidth(2, 100);
+        m_ui->filesList->expandAll();
+        m_ui->filesList->setProperty("initialized", true);
+    }
+}
+
+void Properties::pushStats(const QJsonObject &state)
+{
+    std::array<quint64, 10> sample {};
+    sample[2] = qMax<qint64>(0, state.value(u"up_info_speed"_s).toInteger());
+    sample[3] = qMax<qint64>(0, state.value(u"dl_info_speed"_s).toInteger());
+    m_speed->pushSample(sample);
+}
+
+void Properties::resetSpeedHistory()
+{
+    m_speed->clearHistory();
 }

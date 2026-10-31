@@ -277,6 +277,7 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
         m_freeSpace->setText(tr("Free space: N/A"));
         m_dht->setText(tr("DHT: %1 nodes").arg(0));
         m_properties->clear();
+        m_properties->resetSpeedHistory();
         updateFilters();
     });
     connect(m_table->selectionModel(), &QItemSelectionModel::selectionChanged, this, [this]
@@ -433,6 +434,7 @@ void Window::applySync(const QJsonObject &sync)
     const auto state = sync.value(u"server_state"_s).toObject();
     for (auto it = state.begin(); it != state.end(); ++it)
         m_serverState.insert(it.key(), it.value());
+    m_properties->pushStats(m_serverState);
     m_rates->setText(TorrentModel::speed(m_serverState.value(u"dl_info_speed"_s).toInteger()));
     m_uploadRate->setText(TorrentModel::speed(m_serverState.value(u"up_info_speed"_s).toInteger()));
     m_freeSpace->setText(QCoreApplication::translate("StatusBar", "Free space: %1").arg(TorrentModel::size(m_serverState.value(u"free_space_on_disk"_s).toInteger())));
@@ -561,5 +563,8 @@ void Window::refreshDetails()
     };
     m_client.get(methods[tab], query, [apply, tab](const QByteArray &body) { apply(tab, body); });
     if (tab == 0)
+    {
         m_client.get(u"torrents/pieceStates"_s, query, [apply](const QByteArray &body) { apply(6, body); });
+        m_client.get(u"torrents/pieceAvailability"_s, query, [apply](const QByteArray &body) { apply(7, body); });
+    }
 }

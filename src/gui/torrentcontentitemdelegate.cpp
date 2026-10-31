@@ -35,7 +35,6 @@
 #include <QProgressBar>
 
 #include "base/bittorrent/downloadpriority.h"
-#include "base/bittorrent/torrent.h"
 #include "gui/torrentcontentmodel.h"
 
 TorrentContentItemDelegate::TorrentContentItemDelegate(QWidget *parent)

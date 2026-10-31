@@ -30,7 +30,7 @@
 
 #include <QSortFilterProxyModel>
 
-class TrackerListModel;
+class QAbstractItemModel;
 
 class TrackerListSortModel final : public QSortFilterProxyModel
 {
@@ -38,9 +38,9 @@ class TrackerListSortModel final : public QSortFilterProxyModel
     Q_DISABLE_COPY_MOVE(TrackerListSortModel)
 
 public:
-    explicit TrackerListSortModel(TrackerListModel *model, QObject *parent = nullptr);
+    explicit TrackerListSortModel(QAbstractItemModel *model, QObject *parent = nullptr);
 
-    void setSourceModel(TrackerListModel *model);
+    void setSourceModel(QAbstractItemModel *model);
 
 private:
     using QSortFilterProxyModel::setSourceModel;

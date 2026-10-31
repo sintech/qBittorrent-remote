@@ -35,7 +35,9 @@
 #include <QPainter>
 #include <QPen>
 
+#ifndef QBT_REMOTE_CLIENT
 #include "base/bittorrent/session.h"
+#endif
 #include "base/global.h"
 #include "base/unicodestrings.h"
 #include "base/utils/misc.h"
@@ -106,7 +108,7 @@ SpeedPlotView::Averager::Averager(const milliseconds duration, const millisecond
     m_lastSampleTime.start();
 }
 
-bool SpeedPlotView::Averager::push(const SampleData &sampleData)
+bool SpeedPlotView::Averager::push(const SampleData &sampleData, const milliseconds updateInterval)
 {
     // Accumulator overflow will be hit in worst case on longest used averaging span,
     // defined by resolution. Maximum resolution is 144 seconds
@@ -118,7 +120,6 @@ bool SpeedPlotView::Averager::push(const SampleData &sampleData)
         m_accumulator[id] += sampleData[id];
 
     // system may go to sleep, that can cause very big elapsed interval
-    const milliseconds updateInterval {static_cast<int64_t>(BitTorrent::Session::instance()->refreshInterval() * 1.25)};
     const milliseconds maxElapsed {std::max(updateInterval, m_resolution)};
     const milliseconds elapsed {std::min(milliseconds {m_lastSampleTime.elapsed()}, maxElapsed)};
     if (elapsed < m_resolution)
@@ -201,11 +202,17 @@ void SpeedPlotView::setGraphEnable(GraphID id, bool enable)
 
 void SpeedPlotView::pushPoint(const SpeedPlotView::SampleData &point)
 {
+#ifndef QBT_REMOTE_CLIENT
+    const int refreshInterval = BitTorrent::Session::instance()->refreshInterval();
+#else
+    const int refreshInterval = m_refreshInterval;
+#endif
+    const milliseconds interval {static_cast<int64_t>(refreshInterval * 1.25)};
     for (Averager *averager : {&m_averager5Min, &m_averager30Min
                                 , &m_averager6Hour, &m_averager12Hour
                                 , &m_averager24Hour})
     {
-        if (averager->push(point))
+        if (averager->push(point, interval))
         {
             if (m_currentAverager == averager)
                 viewport()->update();
@@ -424,4 +431,35 @@ SpeedPlotView::GraphProperties::GraphProperties(const QString &name, const QPen 
     , pen(pen)
     , enable(enable)
 {
+}
+
+void SpeedPlotView::Averager::clear()
+{
+    m_sink.clear();
+    m_currentDuration = 0ms;
+    m_counter = 0;
+    m_accumulator = {};
+    m_lastSampleTime.restart();
+}
+
+void SpeedPlotView::clearHistory()
+{
+    for (auto *averager : {&m_averager5Min, &m_averager30Min, &m_averager6Hour, &m_averager12Hour, &m_averager24Hour})
+        averager->clear();
+    viewport()->update();
+}
+
+void SpeedPlotView::setRefreshInterval(const int interval)
+{
+    m_refreshInterval = qMax(1, interval);
+}
+
+qsizetype SpeedPlotView::sampleCount() const
+{
+    return currentData().size();
+}
+
+quint64 SpeedPlotView::peakValue() const
+{
+    return maxYValue();
 }

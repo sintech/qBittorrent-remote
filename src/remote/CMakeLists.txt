@@ -9,23 +9,34 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../gui" "${CMAKE_CURRENT_BINARY_DIR}")
 # Reuse the actual upstream property form. Only its promoted, session-bound file
-# view is substituted by a plain QTreeView with the remote content model.
+# controller is replaced by its shared presentation view and remote content model.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../gui/properties/propertieswidget.ui")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../gui/properties/propertieswidget.ui" propertiesForm)
-string(REPLACE "<widget class=\"TorrentContentWidget\"" "<widget class=\"QTreeView\"" propertiesForm "${propertiesForm}")
-string(REGEX REPLACE "<customwidgets>.*</customwidgets>" "" propertiesForm "${propertiesForm}")
+string(REPLACE "TorrentContentWidget" "TorrentContentView" propertiesForm "${propertiesForm}")
+string(REPLACE "gui/torrentcontentwidget.h" "gui/propertylistviews.h" propertiesForm "${propertiesForm}")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/remoteproperties.ui" "${propertiesForm}")
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Network Widgets Svg)
 add_library(qbt_remote STATIC client.cpp client.h torrentmodel.cpp torrentmodel.h window.cpp window.h properties.cpp properties.h sidebar.cpp sidebar.h
+    ../gui/propertylistviews.cpp ../gui/propertylistviews.h
+    ../gui/properties/peerlistsortmodel.cpp ../gui/properties/peerlistsortmodel.h
+    ../gui/trackerlist/trackerlistsortmodel.cpp ../gui/trackerlist/trackerlistsortmodel.h
+    ../gui/trackerlist/trackerlistitemdelegate.cpp ../gui/trackerlist/trackerlistitemdelegate.h
+    ../gui/torrentcontentitemdelegate.cpp ../gui/torrentcontentitemdelegate.h
+    ../base/utils/size.cpp
+    ../gui/properties/speedwidget.cpp ../gui/properties/speedwidget.h
+    ../gui/properties/speedplotview.cpp ../gui/properties/speedplotview.h
+    ../gui/properties/piecesbar.cpp ../gui/properties/piecesbar.h
+    ../gui/properties/downloadedpiecesbar.cpp ../gui/properties/downloadedpiecesbar.h
+    ../gui/properties/pieceavailabilitybar.cpp ../gui/properties/pieceavailabilitybar.h
     ../gui/transferlistfilterswidgetitem.cpp ../gui/transferlistfilterswidgetitem.h
     ../gui/hidabletabwidget.cpp ../gui/hidabletabwidget.h
     ../gui/properties/proptabbar.cpp ../gui/properties/proptabbar.h
     ../gui/progressbarpainter.cpp ../gui/progressbarpainter.h
     "${CMAKE_CURRENT_BINARY_DIR}/remoteproperties.ui")
-target_compile_definitions(qbt_remote PRIVATE QBT_REMOTE_CLIENT)
+target_compile_definitions(qbt_remote PUBLIC QBT_REMOTE_CLIENT QBT_USE_QCOLLATOR=1)
 target_compile_definitions(qbt_remote PUBLIC QT_USE_QSTRINGBUILDER QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
 target_link_libraries(qbt_remote PUBLIC Qt6::Core Qt6::Network Qt6::Widgets)
-target_include_directories(qbt_remote PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..")
+target_include_directories(qbt_remote PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/..")
 qt_add_executable(qbittorrent-remote main.cpp ../icons/icons.qrc)
 target_link_libraries(qbittorrent-remote PRIVATE qbt_remote Qt6::Svg)
 if(WIN32)

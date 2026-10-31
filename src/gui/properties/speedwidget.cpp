@@ -34,10 +34,14 @@
 #include <QMenu>
 #include <QVBoxLayout>
 
+#include <QSettings>
+#include "base/global.h"
+#ifndef QBT_REMOTE_CLIENT
 #include "base/bittorrent/session.h"
 #include "base/bittorrent/sessionstatus.h"
 #include "base/preferences.h"
 #include "propertieswidget.h"
+#endif
 #include "speedplotview.h"
 
 ComboBoxMenuButton::ComboBoxMenuButton(QWidget *parent, QMenu *menu)
@@ -54,7 +58,15 @@ void ComboBoxMenuButton::showPopup()
     QComboBox::hidePopup();
 }
 
+#ifndef QBT_REMOTE_CLIENT
 SpeedWidget::SpeedWidget(PropertiesWidget *parent)
+    : SpeedWidget(static_cast<QWidget *>(parent))
+{
+    connect(BitTorrent::Session::instance(), &BitTorrent::Session::statsUpdated, this, &SpeedWidget::update);
+}
+#endif
+
+SpeedWidget::SpeedWidget(QWidget *parent)
     : QWidget(parent)
 {
     m_layout = new QVBoxLayout(this);
@@ -67,6 +79,7 @@ SpeedWidget::SpeedWidget(PropertiesWidget *parent)
     m_periodLabel = new QLabel(u"<b>" + tr("Period:") + u"</b>");
 
     m_periodCombobox = new QComboBox();
+    m_periodCombobox->setObjectName(u"speedPeriod"_s);
     m_periodCombobox->addItem(tr("1 Minute"));
     m_periodCombobox->addItem(tr("5 Minutes"));
     m_periodCombobox->addItem(tr("30 Minutes"));
@@ -109,8 +122,6 @@ SpeedWidget::SpeedWidget(PropertiesWidget *parent)
     m_hlayout->addWidget(m_graphsButton);
 
     m_plot = new SpeedPlotView(this);
-    connect(BitTorrent::Session::instance(), &BitTorrent::Session::statsUpdated, this, &SpeedWidget::update);
-
     m_layout->addLayout(m_hlayout);
     m_layout->addWidget(m_plot);
 
@@ -126,6 +137,7 @@ SpeedWidget::~SpeedWidget()
     qDebug("SpeedWidget::~SpeedWidget() EXIT");
 }
 
+#ifndef QBT_REMOTE_CLIENT
 void SpeedWidget::update()
 {
     const BitTorrent::SessionStatus &btStatus = BitTorrent::Session::instance()->status();
@@ -145,6 +157,8 @@ void SpeedWidget::update()
     m_plot->pushPoint(sampleData);
 }
 
+#endif
+
 void SpeedWidget::onPeriodChange(int period)
 {
     m_plot->setPeriod(static_cast<SpeedPlotView::TimePeriod>(period));
@@ -158,16 +172,24 @@ void SpeedWidget::onGraphChange(int id)
 
 void SpeedWidget::loadSettings()
 {
+#ifndef QBT_REMOTE_CLIENT
     Preferences *preferences = Preferences::instance();
-
     int periodIndex = preferences->getSpeedWidgetPeriod();
+#else
+    QSettings settings;
+    int periodIndex = qBound(0, settings.value(u"remote/speed/period"_s, 0).toInt(), 6);
+#endif
     m_periodCombobox->setCurrentIndex(periodIndex);
     onPeriodChange(static_cast<SpeedPlotView::TimePeriod>(periodIndex));
 
     for (int id = SpeedPlotView::UP; id < SpeedPlotView::NB_GRAPHS; ++id)
     {
         QAction *action = m_graphsMenuActions.at(id);
+#ifndef QBT_REMOTE_CLIENT
         bool enable = preferences->getSpeedWidgetGraphEnable(id);
+#else
+        bool enable = settings.value(u"remote/speed/graph%1"_s.arg(id), (id == SpeedPlotView::PAYLOAD_UP || id == SpeedPlotView::PAYLOAD_DOWN)).toBool();
+#endif
 
         action->setChecked(enable);
         m_plot->setGraphEnable(static_cast<SpeedPlotView::GraphID>(id), enable);
@@ -176,13 +198,43 @@ void SpeedWidget::loadSettings()
 
 void SpeedWidget::saveSettings() const
 {
+#ifndef QBT_REMOTE_CLIENT
     Preferences *preferences = Preferences::instance();
-
     preferences->setSpeedWidgetPeriod(m_periodCombobox->currentIndex());
+#else
+    QSettings settings;
+    settings.setValue(u"remote/speed/period"_s, m_periodCombobox->currentIndex());
+#endif
 
     for (int id = SpeedPlotView::UP; id < SpeedPlotView::NB_GRAPHS; ++id)
     {
         QAction *action = m_graphsMenuActions.at(id);
+#ifndef QBT_REMOTE_CLIENT
         preferences->setSpeedWidgetGraphEnable(id, action->isChecked());
+#else
+        settings.setValue(u"remote/speed/graph%1"_s.arg(id), action->isChecked());
+#endif
+    }
+}
+
+void SpeedWidget::pushSample(const std::array<quint64, 10> &sample)
+{
+    m_plot->pushPoint(sample);
+}
+
+void SpeedWidget::clearHistory()
+{
+    m_plot->clearHistory();
+}
+
+void SpeedWidget::setAvailableGraphs(const std::array<bool, 10> &available)
+{
+    for (int id = 0; id < SpeedPlotView::NB_GRAPHS; ++id)
+    {
+        auto *action = m_graphsMenuActions.at(id);
+        action->setEnabled(available[id]);
+        if (!available[id])
+            action->setChecked(false);
+        action->setToolTip(available[id] ? QString() : tr("Not reported by this server API"));
     }
 }

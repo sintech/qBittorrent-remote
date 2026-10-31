@@ -59,30 +59,15 @@
 #include "trackerlistsortmodel.h"
 
 TrackerListWidget::TrackerListWidget(QWidget *parent)
-    : QTreeView(parent)
+    : TrackerListView(parent, false)
 {
 #ifdef QBT_USES_LIBTORRENT2
     setColumnHidden(TrackerListModel::COL_PROTOCOL, true); // Must be set before calling loadSettings()
 #endif
 
-    setExpandsOnDoubleClick(false);
-    setAllColumnsShowFocus(true);
-    setSelectionMode(QAbstractItemView::ExtendedSelection);
-    setSortingEnabled(true);
-    setUniformRowHeights(true);
-    setContextMenuPolicy(Qt::CustomContextMenu);
-
-    header()->setSortIndicator(0, Qt::AscendingOrder);
-    header()->setFirstSectionMovable(true);
-    header()->setStretchLastSection(false); // Must be set after loadSettings() in order to work
-    header()->setTextElideMode(Qt::ElideRight);
-    header()->setContextMenuPolicy(Qt::CustomContextMenu);
-
     m_model = new TrackerListModel(BitTorrent::Session::instance(), this);
     auto *sortModel = new TrackerListSortModel(m_model, this);
     QTreeView::setModel(sortModel);
-
-    setItemDelegate(new TrackerListItemDelegate(this));
 
     loadSettings();
 

@@ -69,18 +69,8 @@ namespace
 }
 
 TorrentContentWidget::TorrentContentWidget(QWidget *parent)
-    : QTreeView(parent)
+    : TorrentContentView(parent, false)
 {
-    setDragDropMode(QAbstractItemView::DragOnly);
-    setDragEnabled(false);
-    setSelectionMode(QAbstractItemView::MultiSelection);
-    setExpandsOnDoubleClick(false);
-    setSortingEnabled(true);
-    setUniformRowHeights(true);
-    header()->setSortIndicator(0, Qt::AscendingOrder);
-    header()->setFirstSectionMovable(true);
-    header()->setContextMenuPolicy(Qt::CustomContextMenu);
-
     m_model = new TorrentContentModel(this);
     connect(m_model, &TorrentContentModel::renameFailed, this, [this](const QString &errorMessage)
     {

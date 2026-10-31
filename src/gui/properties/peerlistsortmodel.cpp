@@ -28,7 +28,7 @@
 
 #include "peerlistsortmodel.h"
 
-#include "peerlistwidget.h"
+#include "gui/propertylistviews.h"
 
 PeerListSortModel::PeerListSortModel(QObject *parent)
     : QSortFilterProxyModel(parent)
@@ -40,8 +40,8 @@ bool PeerListSortModel::lessThan(const QModelIndex &left, const QModelIndex &rig
 {
     switch (sortColumn())
     {
-    case PeerListWidget::IP:
-    case PeerListWidget::CLIENT:
+    case PeerListView::IP:
+    case PeerListView::CLIENT:
         {
             const QString strL = left.data(UnderlyingDataRole).toString();
             const QString strR = right.data(UnderlyingDataRole).toString();
