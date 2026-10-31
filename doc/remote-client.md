@@ -77,6 +77,11 @@ kept in process memory only and must be entered on the next launch.
   at connection and survives torrent selection. The API exposes payload upload/
   download rates; unavailable overhead/DHT/tracker series are disabled. Switching
   servers clears history.
+- Options (toolbar/menu/Alt+O) opens the connected server's Web UI in the
+  default browser, preserving any reverse-proxy prefix. Use the gear icon there
+  for server settings: the stock 5.2.4 Web UI has no standalone settings URL.
+  The browser uses its own login/session; client passwords, API keys and cookies
+  are not passed in the URL. The action is disabled until connected.
 - Connection state, session transfer rates and server free space.
 - API-key/password authentication, reverse proxy prefixes, request timeouts,
   manual reconnect and exponential retry for interrupted reads. Redirects are
@@ -97,7 +102,7 @@ is never instantiated. Full functionality parity is not claimed.
 Trackers, peers and content are still read-only. Settings, RSS, search plugins,
 torrent creation, session pause, statistics, tray integration and
 full add-torrent options remain unported. Connect to Server is in the File menu;
-the original Options action keeps its label and stays disabled until ported.
+the original Options action opens server settings via the browser Web UI.
 The remote profile does not import the local client's appearance preferences.
 The original theme loader is available through the separate remote profile
 (`remote/theme` for a qbtheme path, `remote/style` for a Qt style); an appearance

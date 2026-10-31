@@ -111,6 +111,16 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     connect(m_ui->actionOpen, &QAction::triggered, this, &Window::addFiles);
     connect(m_ui->actionDownloadFromURL, &QAction::triggered, this, &Window::addLinks);
     connect(m_ui->actionDelete, &QAction::triggered, this, &Window::removeSelected);
+    m_ui->actionOptions->setToolTip(tr("Open server Web UI in the default browser; use its gear icon for settings."));
+    connect(m_ui->actionOptions, &QAction::triggered, this, [this]
+    {
+        if (!m_client.isConnected())
+            return;
+        // The stock Web UI has no standalone settings route. Open its actual
+        // root, retaining the reverse-proxy prefix and the browser's own login.
+        if (!QDesktopServices::openUrl(m_client.serverUrl()))
+            statusBar()->showMessage(tr("Could not open the server Web UI in your browser."), 10000);
+    });
     const QMap<QAction *, QString> commands {
         {m_ui->actionStart, u"start"_s}, {m_ui->actionStop, u"stop"_s},
         {m_ui->actionTopQueuePos, u"topPrio"_s}, {m_ui->actionIncreaseQueuePos, u"increasePrio"_s},
@@ -285,7 +295,7 @@ void Window::updateActions()
 {
     const bool connected = m_client.isConnected();
     const bool selected = connected && !selectedHashes().isEmpty();
-    for (auto *action : {m_ui->actionOpen, m_ui->actionDownloadFromURL})
+    for (auto *action : {m_ui->actionOpen, m_ui->actionDownloadFromURL, m_ui->actionOptions})
         action->setEnabled(connected);
     for (auto *action : {m_ui->actionStart, m_ui->actionStop, m_ui->actionDelete,
         m_ui->actionTopQueuePos, m_ui->actionIncreaseQueuePos, m_ui->actionDecreaseQueuePos, m_ui->actionBottomQueuePos})

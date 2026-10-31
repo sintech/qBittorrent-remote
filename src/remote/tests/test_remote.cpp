@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <QAbstractItemModelTester>
 #include <QAction>
+#include <QDesktopServices>
 #include <QBuffer>
 #include <QJsonArray>
 #include <QNetworkReply>
@@ -138,6 +139,25 @@ namespace
         return result;
     }
 }
+
+class BrowserCapture final : public QObject
+{
+    Q_OBJECT
+public:
+    BrowserCapture()
+    {
+        QDesktopServices::setUrlHandler(u"http"_s, this, "capture");
+        QDesktopServices::setUrlHandler(u"https"_s, this, "capture");
+    }
+    ~BrowserCapture() override
+    {
+        QDesktopServices::unsetUrlHandler(u"http"_s);
+        QDesktopServices::unsetUrlHandler(u"https"_s);
+    }
+    QList<QUrl> urls;
+public slots:
+    void capture(const QUrl &url) { urls.append(url); }
+};
 
 class TestRemote final : public QObject
 {
@@ -553,6 +573,36 @@ private slots:
         QVERIFY(check);
         check->setChecked(true);
         QVERIFY(removal.isRemoveContentSelected());
+    }
+
+    void optionsOpensCurrentServerWebUiWithoutCredentials()
+    {
+        BrowserCapture browser;
+        Network network;
+        Window window(nullptr, &network);
+        auto *options = window.findChild<QAction *>(u"actionOptions"_s);
+        QVERIFY(options);
+        QVERIFY(!options->isEnabled());
+        auto first = keyConnection();
+        first.url = QUrl(u"https://example.test/qbt"_s);
+        window.client()->connectToServer(first);
+        QTRY_VERIFY(options->isEnabled());
+        options->trigger();
+        QCOMPARE(browser.urls, (QList<QUrl> {QUrl(u"https://example.test/qbt/"_s)}));
+        Connection second;
+        second.url = QUrl(u"http://second.test:8080/reverse/proxy/"_s);
+        second.username = u"admin"_s;
+        second.password = u"browser-must-not-receive-this"_s;
+        window.client()->connectToServer(second);
+        QVERIFY(!options->isEnabled());
+        QTRY_VERIFY(options->isEnabled());
+        options->trigger();
+        QCOMPARE(browser.urls.size(), 2);
+        QCOMPARE(browser.urls.last(), second.url);
+        QVERIFY(browser.urls.last().userInfo().isEmpty());
+        QVERIFY(!browser.urls.last().hasQuery());
+        window.client()->disconnectFromServer();
+        QVERIFY(!options->isEnabled());
     }
 
     void nativeWindowStartsDisconnected()
