@@ -60,7 +60,7 @@ class TransferListWidget final : public GUIApplicationComponent<QTreeView>
     Q_DISABLE_COPY_MOVE(TransferListWidget)
 
 public:
-    enum class Command { Start, Stop, ForceStart, Remove, Recheck, Reannounce, QueueUp, QueueDown, QueueTop, QueueBottom };
+    enum class Command { Start, Stop, ForceStart, Remove, Recheck, Reannounce, QueueUp, QueueDown, QueueTop, QueueBottom, OpenFolder };
     static QAction *createAction(Command command, QObject *parent);
     void displayColumnHeaderMenu();
     int visibleColumnsCount() const;

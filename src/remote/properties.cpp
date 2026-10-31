@@ -20,6 +20,8 @@
 #include "gui/properties/downloadedpiecesbar.h"
 #include "gui/properties/pieceavailabilitybar.h"
 #include "torrentmodel.h"
+#include "profiles.h"
+#include <QShortcut>
 #include "ui_propertieswidget.h"
 #include "gui/properties/peerlistwidget.h"
 #include "gui/trackerlist/trackerlistwidget.h"
@@ -131,6 +133,19 @@ Properties::Properties(QWidget *parent)
     m_ui->filesList->setObjectName(u"remoteContent"_s);
     m_ui->filesList->setHeaderSettingsKey(u"remote/contentHeader"_s);
     m_ui->filesList->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    const auto openFile = [this](const QModelIndex &index)
+    {
+        const QString relative = index.siblingAtColumn(0).data(KeyRole).toString();
+        const QString path = remoteFilePath(m_torrent.value(u"save_path"_s).toString(), relative);
+        if (!path.isEmpty()) emit openPathRequested(path);
+    };
+    connect(m_ui->filesList, &QTreeView::doubleClicked, this, openFile);
+    for (const auto key : {Qt::Key_Return, Qt::Key_Enter})
+    {
+        auto *shortcut = new QShortcut(QKeySequence(key), m_ui->filesList);
+        shortcut->setContext(Qt::WidgetShortcut);
+        connect(shortcut, &QShortcut::activated, this, [this, openFile] { openFile(m_ui->filesList->currentIndex()); });
+    }
     m_ui->selectAllButton->setEnabled(false);
     m_ui->selectNoneButton->setEnabled(false);
     m_tabs = m_tabBar;

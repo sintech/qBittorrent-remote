@@ -10,6 +10,7 @@
 #include <QSignalSpy>
 #include <QTreeView>
 #include <QLabel>
+#include <QLineEdit>
 #include <QGroupBox>
 #include <QStackedWidget>
 #include <QPushButton>
@@ -25,6 +26,13 @@
 #include <QCheckBox>
 #include <QTextEdit>
 #include <QStyle>
+#include <QTableWidget>
+#include <QListWidget>
+#include <QDialogButtonBox>
+#include <QFile>
+#include <QDir>
+#include "profiles.h"
+#include "profileeditor.h"
 #include "gui/transferlistwidget.h"
 #include "gui/transferlistdelegate.h"
 #include "gui/properties/peerlistwidget.h"
@@ -146,11 +154,13 @@ class BrowserCapture final : public QObject
 public:
     BrowserCapture()
     {
+        QDesktopServices::setUrlHandler(u"file"_s, this, "capture");
         QDesktopServices::setUrlHandler(u"http"_s, this, "capture");
         QDesktopServices::setUrlHandler(u"https"_s, this, "capture");
     }
     ~BrowserCapture() override
     {
+        QDesktopServices::unsetUrlHandler(u"file"_s);
         QDesktopServices::unsetUrlHandler(u"http"_s);
         QDesktopServices::unsetUrlHandler(u"https"_s);
     }
@@ -521,6 +531,11 @@ private slots:
             QCOMPARE(group->title(), u"Торрент"_s);
             TorrentModel model;
             QCOMPARE(model.headerData(1, Qt::Horizontal, Qt::DisplayRole).toString(), u"Имя"_s);
+            ProfileEditor profiles({}, {}, nullptr);
+            QCOMPARE(profiles.windowTitle(), u"Профили подключений"_s);
+            QCOMPARE(profiles.findChild<QTableWidget *>(u"profileMappings"_s)->horizontalHeaderItem(0)->text(), u"Удалённая папка"_s);
+            Window window;
+            QCOMPARE(window.findChild<QAction *>(u"actionConnectionProfiles"_s)->text(), u"Профили подключений…"_s);
         }
         QCoreApplication::removeTranslator(&translator);
     }
@@ -603,6 +618,181 @@ private slots:
         QVERIFY(!browser.urls.last().hasQuery());
         window.client()->disconnectFromServer();
         QVERIFY(!options->isEnabled());
+    }
+
+    void pathMappingsUseBoundariesAndLongestPrefix()
+    {
+        Profile profile;
+        profile.mappings = {{u"/srv"_s, u"X:/Downloads"_s}, {u"/srv/video"_s, u"Y:/Video"_s}};
+        QCOMPARE(profile.localPath(u"/srv/video/movie.mkv"_s), u"Y:/Video/movie.mkv"_s);
+        QCOMPARE(profile.localPath(u"/srv/video-old/a.mkv"_s), u"X:/Downloads/video-old/a.mkv"_s);
+        QVERIFY(profile.localPath(u"/srv2/movie.mkv"_s).isEmpty());
+        QCOMPARE(profile.localPath(u"/srv/video/"_s), u"Y:/Video"_s);
+        QVERIFY(profile.localPath(u"srv/video/movie.mkv"_s).isEmpty());
+        profile.mappings = {{u"/srv/video"_s, u"//nas/media"_s}};
+        QVERIFY(profile.localPath(u"/srv/video/../../private/key"_s).isEmpty());
+        QVERIFY(profile.localPath(u"/SRV/video/movie.mkv"_s).isEmpty());
+        QCOMPARE(profile.localPath(u"/srv/video/movie.mkv"_s), u"//nas/media/movie.mkv"_s);
+        profile.mappings = {{u"C:\\Downloads"_s, u"D:\\Local"_s}};
+        QCOMPARE(profile.localPath(u"c:/downloads/movie.mkv"_s), u"D:/Local/movie.mkv"_s);
+        profile.mappings = {{u"/"_s, u"//nas/share"_s}};
+        QCOMPARE(profile.localPath(u"/video/a.mkv"_s), u"//nas/share/video/a.mkv"_s);
+        QCOMPARE(remoteFilePath(u"/srv/downloads"_s, u"video/a.mkv"_s), u"/srv/downloads/video/a.mkv"_s);
+        QVERIFY(remoteFilePath(u"/srv/downloads"_s, u"../private/key"_s).isEmpty());
+        QVERIFY(remoteFilePath(u"/srv/downloads"_s, u"/etc/passwd"_s).isEmpty());
+        QCOMPARE(normalizedPath(u"C:"_s), u"C:"_s);
+    }
+
+    void profilesPersistAndRejectInvalidReplacements()
+    {
+        auto profile = ProfileStore::create();
+        profile.name = u"NAS"_s;
+        profile.url = QUrl(u"https://example.test/qbt/"_s);
+        profile.username = u"admin"_s;
+        profile.mappings = {{u"/srv/downloads"_s, u"X:/Downloads"_s}};
+        QString error;
+        QVERIFY2(ProfileStore::save({profile}, &error), qPrintable(error));
+        const auto loaded = ProfileStore::load(&error);
+        QVERIFY(error.isEmpty());
+        QCOMPARE(loaded.size(), 1);
+        QCOMPARE(loaded.first().id, profile.id);
+        QCOMPARE(loaded.first().url, profile.url);
+        QCOMPARE(loaded.first().mappings.first().local, u"X:/Downloads"_s);
+        const auto previous = QSettings().value(u"remote/profiles/v1"_s);
+        auto invalid = profile;
+        invalid.mappings.append({u"/srv/downloads/"_s, u"Y:/Other"_s});
+        QVERIFY(!ProfileStore::save({invalid}, &error));
+        QVERIFY(!error.isEmpty());
+        QCOMPARE(QSettings().value(u"remote/profiles/v1"_s), previous);
+        invalid = profile;
+        invalid.url = QUrl(u"https://admin:secret@example.test/qbt/"_s);
+        QVERIFY(!ProfileStore::save({invalid}, &error));
+        QCOMPARE(QSettings().value(u"remote/profiles/v1"_s), previous);
+        invalid = profile;
+        invalid.mappings = {{u"/srv"_s, u"C:"_s}};
+        QVERIFY(!ProfileStore::save({invalid}, &error));
+        QSettings().setValue(u"remote/profiles/v1"_s, QByteArray("invalid json"));
+        QVERIFY(ProfileStore::load(&error).isEmpty());
+        QVERIFY(!error.isEmpty());
+        QCOMPARE(QSettings().value(u"remote/profiles/v1"_s).toByteArray(), QByteArray("invalid json"));
+    }
+
+    void profileSecretsUseWindowsProtection()
+    {
+        auto profile = ProfileStore::create();
+        profile.url = QUrl(u"https://example.test/"_s);
+        profile.password = u"fake-test-password-never-plaintext"_s;
+        profile.apiKey = u"fake-test-api-key-never-plaintext"_s;
+        QString error;
+#ifdef Q_OS_WIN
+        QVERIFY2(ProfileStore::save({profile}, &error), qPrintable(error));
+        const auto raw = QSettings().value(u"remote/profiles/v1"_s).toByteArray();
+        QVERIFY(!raw.contains(profile.password.toUtf8()));
+        QVERIFY(!raw.contains(profile.apiKey.toUtf8()));
+        auto loaded = ProfileStore::load(&error);
+        QCOMPARE(loaded.size(), 1);
+        QVERIFY(loaded.first().secretsReadable);
+        QCOMPARE(loaded.first().password, profile.password);
+        QCOMPARE(loaded.first().apiKey, profile.apiKey);
+        QVERIFY(!loaded.first().protectedSecrets.isEmpty());
+        // An unreadable blob is preserved during unrelated mapping edits.
+        loaded.first().secretsReadable = false;
+        loaded.first().protectedSecrets = QByteArray("unreadable-dpapi-test-blob");
+        loaded.first().mappings = {{u"/srv"_s, u"X:/Data"_s}};
+        QVERIFY(ProfileStore::save(loaded, &error));
+        loaded = ProfileStore::load(&error);
+        QVERIFY(error.isEmpty());
+        QVERIFY(!loaded.first().secretsReadable);
+        QCOMPARE(loaded.first().protectedSecrets, QByteArray("unreadable-dpapi-test-blob"));
+        QVERIFY(ProfileStore::save(loaded, &error));
+        QCOMPARE(ProfileStore::load().first().protectedSecrets, QByteArray("unreadable-dpapi-test-blob"));
+#else
+        // The portable test target must not silently persist plaintext secrets.
+        QVERIFY(!ProfileStore::save({profile}, &error));
+        QVERIFY(!error.isEmpty());
+        QVERIFY(!QSettings().contains(u"remote/profiles/v1"_s));
+#endif
+    }
+
+    void profileEditorKeepsDraftsAndCancelDoesNotSave()
+    {
+        auto first = ProfileStore::create();
+        first.name = u"First"_s;
+        first.url = QUrl(u"https://first.test/qbt/"_s);
+        first.mappings = {{u"/srv/downloads"_s, u"X:/Downloads"_s}};
+        QVERIFY(ProfileStore::save({first}));
+        {
+            ProfileEditor editor(ProfileStore::load(), first.id);
+            auto *name = editor.findChild<QLineEdit *>(u"profileName"_s);
+            QVERIFY(name);
+            name->setText(u"Edited first"_s);
+            editor.findChild<QPushButton *>(u"addProfile"_s)->click();
+            name->setText(u"Second"_s);
+            editor.findChild<QLineEdit *>(u"profileUrl"_s)->setText(u"http://second.test:8080/"_s);
+            editor.findChild<QListWidget *>(u"profileList"_s)->setCurrentRow(0);
+            QCOMPARE(name->text(), u"Edited first"_s);
+            QCOMPARE(editor.findChild<QLineEdit *>(u"profilePassword"_s)->echoMode(), QLineEdit::Password);
+            editor.reject();
+        }
+        QCOMPARE(ProfileStore::load().size(), 1);
+        QCOMPARE(ProfileStore::load().first().name, u"First"_s);
+        ProfileEditor editor(ProfileStore::load(), first.id);
+        editor.findChild<QLineEdit *>(u"profileName"_s)->setText(u"Saved name"_s);
+        auto *table = editor.findChild<QTableWidget *>(u"profileMappings"_s);
+        QCOMPARE(table->rowCount(), 1);
+        table->item(0, 1)->setText(u"Y:/New location"_s);
+        editor.show();
+        const auto screenshot = qEnvironmentVariable("REMOTE_SCREENSHOT_PATH");
+        if (!screenshot.isEmpty()) QVERIFY(editor.grab().save(screenshot + u".profiles.png"));
+        editor.findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click();
+        QCOMPARE(editor.result(), int(QDialog::Accepted));
+        QCOMPARE(ProfileStore::load().first().name, u"Saved name"_s);
+        QCOMPARE(ProfileStore::load().first().mappings.first().local, u"Y:/New location"_s);
+    }
+
+    void contentActivationOpensMappedLocalFileForActiveProfile()
+    {
+        QTemporaryDir local;
+        QVERIFY(local.isValid());
+        QVERIFY(QDir(local.path()).mkpath(u"video"_s));
+        QFile file(local.filePath(u"video/movie.txt"_s));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("test");
+        file.close();
+        auto profile = ProfileStore::create();
+        profile.name = u"Mapped server"_s;
+        profile.url = QUrl(u"https://example.test/qbt/"_s);
+        profile.mappings = {{u"/srv/downloads"_s, local.path()}};
+        QVERIFY(ProfileStore::save({profile}));
+        BrowserCapture browser;
+        Network network;
+        Window window(nullptr, &network);
+        QVERIFY(window.connectProfile(profile.id));
+        QTRY_VERIFY(window.client()->isConnected());
+        QVERIFY(window.findChild<QAction *>(u"actionConnectionProfiles"_s)->isEnabled());
+        auto *panel = window.findChild<Properties *>(u"remoteProperties"_s);
+        panel->setTorrent(QJsonObject {{u"hash"_s, u"abc"_s}, {u"save_path"_s, u"/srv/downloads"_s}});
+        panel->setData(4, QJsonDocument(QJsonArray {QJsonObject {{u"name"_s, u"video/movie.txt"_s}, {u"size"_s, 4}, {u"progress"_s, 1}, {u"priority"_s, 1}}}));
+        auto *tree = panel->findChild<TorrentContentWidget *>(u"remoteContent"_s);
+        const auto folder = tree->model()->index(0, 0);
+        const auto index = tree->model()->index(0, 0, folder);
+        QVERIFY(index.isValid());
+        QVERIFY(QMetaObject::invokeMethod(tree, "doubleClicked", Q_ARG(QModelIndex, index)));
+        QCOMPARE(browser.urls.size(), 1);
+        QCOMPARE(browser.urls.first(), QUrl::fromLocalFile(file.fileName()));
+        // Switching profiles changes the root used for the same remote path.
+        QTemporaryDir other;
+        QVERIFY(other.isValid());
+        auto second = profile;
+        second.id = ProfileStore::create().id;
+        second.url = QUrl(u"http://other.test/"_s);
+        second.mappings = {{u"/srv/downloads"_s, other.path()}};
+        QVERIFY(ProfileStore::save({profile, second}));
+        QVERIFY(window.connectProfile(second.id));
+        QTRY_VERIFY(window.client()->isConnected());
+        window.openRemotePath(u"/srv/downloads"_s);
+        QCOMPARE(browser.urls.size(), 2);
+        QCOMPARE(browser.urls.last(), QUrl::fromLocalFile(other.path()));
     }
 
     void nativeWindowStartsDisconnected()

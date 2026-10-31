@@ -11,6 +11,8 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QDir>
 #include <QFormLayout>
 #include <QHeaderView>
 #include <QInputDialog>
@@ -20,6 +22,8 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPushButton>
+#include <algorithm>
 #include <QSettings>
 #include <QSplitter>
 #include <QStatusBar>
@@ -29,6 +33,7 @@
 #include "ui_mainwindow.h"
 #include "properties.h"
 #include "sidebar.h"
+#include "profileeditor.h"
 #include "gui/transferlistwidget.h"
 #include "gui/lineedit.h"
 #include "gui/statusbar.h"
@@ -61,6 +66,10 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     m_ui->menuFile->insertAction(m_ui->actionCloseWindow, connectAction);
     m_ui->menuFile->insertSeparator(m_ui->actionCloseWindow);
     connect(connectAction, &QAction::triggered, this, &Window::showConnectionDialog);
+    auto *profilesAction = new QAction(UIThemeManager::instance()->getIcon(u"network-server"_s), tr("Connection profiles…"), this);
+    profilesAction->setObjectName(u"actionConnectionProfiles"_s);
+    m_ui->menuOptions->insertAction(m_ui->actionOptions, profilesAction);
+    connect(profilesAction, &QAction::triggered, this, &Window::showProfilesDialog);
     m_ui->menuAutoShutdownOnDownloadsCompletion->setEnabled(false);
     m_ui->menuLog->setEnabled(false);
     auto *languageMenu = m_ui->menuView->addMenu(tr("Language"));
@@ -179,6 +188,7 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
         m_filter.setFilters(m_search->text(), m_sidebar->state(), m_sidebar->category(),
             m_sidebar->tag(), m_filterColumn->currentData().toInt(), m_sidebar->tracker());
     });
+    connect(m_properties, &Properties::openPathRequested, this, &Window::openRemotePath);
     connect(m_properties, &Properties::currentChanged, this, [this] { refreshDetails(); });
     connect(m_filterColumn, &QComboBox::currentIndexChanged, this, [this] { updateFilters(); });
     m_detailsTimer.setInterval(5000);
@@ -214,73 +224,154 @@ void Window::closeEvent(QCloseEvent *event)
     MainWindow::closeEvent(event);
 }
 
+bool Window::reloadProfiles(QString *error)
+{
+    QString failure;
+    const auto profiles = ProfileStore::load(&failure);
+    if (error) *error = failure;
+    if (!failure.isEmpty()) return false;
+    m_profiles = profiles;
+    return true;
+}
+
+bool Window::connectProfile(const QString &id, QString *error)
+{
+    if (!reloadProfiles(error)) return false;
+    for (const auto &profile : m_profiles)
+    {
+        if (profile.id != id) continue;
+        QString failure;
+        if (!profile.secretsReadable) failure = profile.secretError;
+        else if (profile.apiKeyAuthentication && profile.apiKey.isEmpty()) failure = tr("Enter the API key in Tools → Connection profiles.");
+        if (!failure.isEmpty()) { if (error) *error = failure; return false; }
+        m_activeProfile = profile;
+        QSettings().setValue(u"remote/selectedProfile"_s, profile.id);
+        setWindowTitle(u"qBittorrent Remote — %1 (%2)"_s.arg(profile.name, profile.url.host()));
+        m_client.connectToServer(profile.connection());
+        return true;
+    }
+    if (error) *error = tr("The selected connection profile no longer exists.");
+    return false;
+}
+
+void Window::showProfilesDialog() { editProfiles(false); }
+
+void Window::editProfiles(const bool offerConnection)
+{
+    QString error;
+    if (!reloadProfiles(&error))
+    {
+        QMessageBox::warning(this, tr("Connection profiles"), error);
+        return;
+    }
+    const QString selected = m_activeProfile.id.isEmpty() ? QSettings().value(u"remote/selectedProfile"_s).toString() : m_activeProfile.id;
+    ProfileEditor editor(m_profiles, selected, this);
+    if (offerConnection) editor.setWindowTitle(tr("Configure a connection profile"));
+    if (editor.exec() != QDialog::Accepted) return;
+    if (!reloadProfiles(&error))
+    {
+        QMessageBox::warning(this, tr("Connection profiles"), error);
+        return;
+    }
+    if (editor.connectRequested())
+    {
+        if (!connectProfile(editor.selectedId(), &error)) QMessageBox::warning(this, tr("Cannot connect"), error);
+        return;
+    }
+    if (!m_activeProfile.id.isEmpty())
+    {
+        const auto active = std::find_if(m_profiles.cbegin(), m_profiles.cend(), [this](const auto &profile) { return profile.id == m_activeProfile.id; });
+        if (active == m_profiles.cend())
+        {
+            m_client.disconnectFromServer();
+            m_activeProfile = {};
+            setWindowTitle(u"qBittorrent Remote — 5.2.4"_s);
+            QSettings().remove(u"remote/selectedProfile"_s);
+        }
+        else
+        {
+            const auto previous = m_activeProfile.connection(), next = active->connection();
+            if (previous.url != next.url || previous.username != next.username || previous.password != next.password || previous.apiKey != next.apiKey)
+            {
+                m_client.disconnectFromServer();
+                statusBar()->showMessage(tr("Connection settings changed. Reconnect to apply them."), 10000);
+            }
+            m_activeProfile = *active; // Mapping-only edits take effect immediately.
+            setWindowTitle(u"qBittorrent Remote — %1 (%2)"_s.arg(active->name, active->url.host()));
+        }
+    }
+}
+
 void Window::showConnectionDialog()
 {
+    QString error;
+    if (!reloadProfiles(&error))
+    {
+        QMessageBox::warning(this, tr("Connection profiles"), error);
+        return;
+    }
+    if (m_profiles.isEmpty()) { editProfiles(true); return; }
     QDialog dialog(this);
     dialog.setWindowTitle(tr("Connect to qBittorrent"));
     auto *form = new QFormLayout(&dialog);
-    auto *url = new QLineEdit(&dialog);
-    url->setPlaceholderText(u"https://server.example/qbittorrent/"_s);
-    auto *auth = new QComboBox(&dialog);
-    auth->addItems({tr("API key"), tr("Username and password")});
-    auto *key = new QLineEdit(&dialog);
-    key->setEchoMode(QLineEdit::Password);
-    auto *username = new QLineEdit(&dialog);
-    auto *password = new QLineEdit(&dialog);
-    password->setEchoMode(QLineEdit::Password);
-    QSettings settings;
-    url->setText(settings.value(u"remote/url"_s).toString());
-    username->setText(settings.value(u"remote/username"_s, u"admin"_s).toString());
-    form->addRow(tr("Server URL:"), url);
-    form->addRow(tr("Authentication:"), auth);
-    form->addRow(tr("API key:"), key);
-    form->addRow(tr("Username:"), username);
-    form->addRow(tr("Password:"), password);
-    auto *hint = new QLabel(tr("Use the Web UI address. Download paths belong to the server.\nPasswords and API keys are kept in memory for this session only."), &dialog);
-    hint->setWordWrap(true);
-    form->addRow(hint);
-    const auto selectAuth = [auth, key, username, password]
+    auto *profiles = new QComboBox(&dialog);
+    const QString selected = QSettings().value(u"remote/selectedProfile"_s).toString();
+    for (const auto &profile : m_profiles)
     {
-        const bool apiKey = (auth->currentIndex() == 0);
-        key->setEnabled(apiKey);
-        username->setEnabled(!apiKey);
-        password->setEnabled(!apiKey);
-    };
-    connect(auth, &QComboBox::currentIndexChanged, &dialog, selectAuth);
-    auth->setCurrentIndex(settings.value(u"remote/auth"_s, 0).toInt());
-    selectAuth();
+        profiles->addItem(profile.name, profile.id);
+        if (profile.id == selected) profiles->setCurrentIndex(profiles->count() - 1);
+    }
+    auto *address = new QLabel(&dialog);
+    address->setTextFormat(Qt::PlainText);
+    const auto showAddress = [this, profiles, address] { address->setText(m_profiles.value(profiles->currentIndex()).url.toDisplayString()); };
+    connect(profiles, &QComboBox::currentIndexChanged, &dialog, showAddress);
+    showAddress();
+    form->addRow(tr("Profile:"), profiles);
+    form->addRow(tr("Server:"), address);
+    auto *manage = new QPushButton(tr("Edit profiles…"), &dialog);
+    form->addRow(manage);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    buttons->button(QDialogButtonBox::Ok)->setText(tr("Connect"));
+    buttons->button(QDialogButtonBox::Cancel)->setText(tr("Cancel"));
     form->addRow(buttons);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    if (dialog.exec() != QDialog::Accepted)
+    connect(manage, &QPushButton::clicked, &dialog, [this, &dialog] { dialog.reject(); editProfiles(true); });
+    if (dialog.exec() == QDialog::Accepted && !connectProfile(profiles->currentData().toString(), &error))
+        QMessageBox::warning(this, tr("Cannot connect"), error);
+}
+
+void Window::openRemotePath(const QString &remotePath)
+{
+    const QString local = m_activeProfile.localPath(remotePath);
+    if (local.isEmpty())
+    {
+        QMessageBox::information(this, tr("No folder mapping"), tr("Add a matching remote → local folder rule in Tools → Connection profiles."));
         return;
-    const QUrl serverUrl(url->text().trimmed());
-    if (!serverUrl.isValid() || serverUrl.host().isEmpty()
-        || ((serverUrl.scheme() != u"http") && (serverUrl.scheme() != u"https"))
-        || !serverUrl.userInfo().isEmpty() || serverUrl.hasQuery() || serverUrl.hasFragment())
+    }
+    if (!QFileInfo::exists(local))
     {
-        QMessageBox::warning(this, tr("Invalid server URL"), tr("Enter an HTTP(S) URL without embedded credentials, query or fragment."));
+        QMessageBox::information(this, tr("Local path not found"), tr("The mapped local path does not exist:\n%1").arg(QDir::toNativeSeparators(local)));
         return;
     }
-    Connection connection;
-    connection.url = serverUrl;
-    if (auth->currentIndex() == 0)
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(local)))
+        QMessageBox::warning(this, tr("Cannot open local path"), QDir::toNativeSeparators(local));
+}
+
+void Window::openSelectedFolder()
+{
+    const auto rows = m_table->selectionModel()->selectedRows();
+    if (rows.size() != 1) return;
+    const auto torrent = m_model.torrentAt(m_filter.mapToSource(rows.first()).row());
+    QString path = torrent.value(u"content_path"_s).toString();
+    if (path.isEmpty()) path = torrent.value(u"save_path"_s).toString();
+    const QString local = m_activeProfile.localPath(path);
+    if (!local.isEmpty() && QFileInfo(local).isFile())
     {
-        if (key->text().trimmed().isEmpty())
-            return;
-        connection.apiKey = key->text().trimmed();
+        const QString directory = QFileInfo(local).absolutePath();
+        QDesktopServices::openUrl(QUrl::fromLocalFile(directory));
     }
-    else
-    {
-        connection.username = username->text();
-        connection.password = password->text();
-    }
-    settings.setValue(u"remote/url"_s, serverUrl.toString());
-    settings.setValue(u"remote/username"_s, username->text());
-    settings.setValue(u"remote/auth"_s, auth->currentIndex());
-    setWindowTitle(u"qBittorrent Remote — " + serverUrl.host());
-    m_client.connectToServer(connection);
+    else openRemotePath(path);
 }
 
 QStringList Window::selectedHashes() const
@@ -423,6 +514,11 @@ void Window::showContextMenu(const QPoint &position)
     menu.addSeparator();
     add(Command::Recheck, [this] { runCommand(u"torrents/recheck"_s); });
     add(Command::Reannounce, [this] { runCommand(u"torrents/reannounce"_s); });
+    menu.addSeparator();
+    auto *openFolder = TransferListWidget::createAction(Command::OpenFolder, &menu);
+    openFolder->setEnabled(selectedHashes().size() == 1 && !m_activeProfile.mappings.isEmpty());
+    connect(openFolder, &QAction::triggered, this, &Window::openSelectedFolder);
+    menu.addAction(openFolder);
     menu.exec(m_table->viewport()->mapToGlobal(position));
 }
 

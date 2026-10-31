@@ -35,6 +35,7 @@ namespace Remote
 
     signals:
         void currentChanged(int index);
+        void openPathRequested(const QString &path);
 
     private:
         void showGeneral(const QJsonObject &properties);

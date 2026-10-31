@@ -13266,4 +13266,243 @@ Please choose a different name and try again.</source>
         <translation>&lt; 1 м</translation>
     </message>
 </context>
+<context>
+    <name>Remote::ProfileEditor</name>
+    <message>
+        <source>Connection profiles</source>
+        <translation>Профили подключений</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Добавить</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Удалить</translation>
+    </message>
+    <message>
+        <source>Username and password</source>
+        <translation>Имя пользователя и пароль</translation>
+    </message>
+    <message>
+        <source>API key</source>
+        <translation>API-ключ</translation>
+    </message>
+    <message>
+        <source>Name:</source>
+        <translation>Название:</translation>
+    </message>
+    <message>
+        <source>Server Web UI URL:</source>
+        <translation>Адрес Web UI сервера:</translation>
+    </message>
+    <message>
+        <source>Authentication:</source>
+        <translation>Аутентификация:</translation>
+    </message>
+    <message>
+        <source>Username:</source>
+        <translation>Имя пользователя:</translation>
+    </message>
+    <message>
+        <source>Password:</source>
+        <translation>Пароль:</translation>
+    </message>
+    <message>
+        <source>API key:</source>
+        <translation>API-ключ:</translation>
+    </message>
+    <message>
+        <source>Folder mappings</source>
+        <translation>Соответствия папок</translation>
+    </message>
+    <message>
+        <source>Example: /srv/downloads → D:\Downloads or \\nas\downloads. The most specific remote folder wins.</source>
+        <translation>Пример: /srv/downloads → D:\Downloads или \\nas\downloads. Приоритет у самого точного соответствия.</translation>
+    </message>
+    <message>
+        <source>Remote folder</source>
+        <translation>Удалённая папка</translation>
+    </message>
+    <message>
+        <source>Local folder</source>
+        <translation>Локальная папка</translation>
+    </message>
+    <message>
+        <source>Add mapping</source>
+        <translation>Добавить соответствие</translation>
+    </message>
+    <message>
+        <source>Remove mapping</source>
+        <translation>Удалить соответствие</translation>
+    </message>
+    <message>
+        <source>Choose local folder…</source>
+        <translation>Выбрать локальную папку…</translation>
+    </message>
+    <message>
+        <source>Passwords and API keys are saved locally with Windows account encryption (DPAPI). Folder mappings only affect opening local files; server paths stay unchanged.</source>
+        <translation>Пароли и API-ключи сохраняются локально с шифрованием учётной записи Windows (DPAPI). Соответствия используются для открытия локальных файлов, пути на сервере не изменяются.</translation>
+    </message>
+    <message>
+        <source>Save and connect</source>
+        <translation>Сохранить и подключиться</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>Сохранить</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Отмена</translation>
+    </message>
+    <message>
+        <source>Invalid profile</source>
+        <translation>Некорректный профиль</translation>
+    </message>
+    <message>
+        <source>Cannot save profiles</source>
+        <translation>Не удалось сохранить профили</translation>
+    </message>
+</context>
+<context>
+    <name>Remote::Window</name>
+    <message>
+        <source>Connection profiles…</source>
+        <translation>Профили подключений…</translation>
+    </message>
+    <message>
+        <source>Connection profiles</source>
+        <translation>Профили подключений</translation>
+    </message>
+    <message>
+        <source>Configure a connection profile</source>
+        <translation>Настройка профиля подключения</translation>
+    </message>
+    <message>
+        <source>Enter the API key in Tools → Connection profiles.</source>
+        <translation>Укажите API-ключ в меню Сервис → Профили подключений.</translation>
+    </message>
+    <message>
+        <source>The selected connection profile no longer exists.</source>
+        <translation>Выбранный профиль подключения больше не существует.</translation>
+    </message>
+    <message>
+        <source>Cannot connect</source>
+        <translation>Не удалось подключиться</translation>
+    </message>
+    <message>
+        <source>Connection settings changed. Reconnect to apply them.</source>
+        <translation>Настройки подключения изменены. Подключитесь заново, чтобы применить их.</translation>
+    </message>
+    <message>
+        <source>Connect to qBittorrent</source>
+        <translation>Подключение к qBittorrent</translation>
+    </message>
+    <message>
+        <source>Profile:</source>
+        <translation>Профиль:</translation>
+    </message>
+    <message>
+        <source>Server:</source>
+        <translation>Сервер:</translation>
+    </message>
+    <message>
+        <source>Edit profiles…</source>
+        <translation>Редактировать профили…</translation>
+    </message>
+    <message>
+        <source>Connect</source>
+        <translation>Подключиться</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Отмена</translation>
+    </message>
+    <message>
+        <source>No folder mapping</source>
+        <translation>Нет соответствия папок</translation>
+    </message>
+    <message>
+        <source>Add a matching remote → local folder rule in Tools → Connection profiles.</source>
+        <translation>Добавьте соответствие удалённой и локальной папок в меню Сервис → Профили подключений.</translation>
+    </message>
+    <message>
+        <source>Local path not found</source>
+        <translation>Локальный путь не найден</translation>
+    </message>
+    <message>
+        <source>The mapped local path does not exist:
+%1</source>
+        <translation>Соответствующий локальный путь не существует:
+%1</translation>
+    </message>
+    <message>
+        <source>Cannot open local path</source>
+        <translation>Не удалось открыть локальный путь</translation>
+    </message>
+    <message>
+        <source>Open server Web UI in the default browser; use its gear icon for settings.</source>
+        <translation>Открыть Web UI сервера в браузере. Настройки доступны по значку шестерёнки.</translation>
+    </message>
+    <message>
+        <source>Could not open the server Web UI in your browser.</source>
+        <translation>Не удалось открыть Web UI сервера в браузере.</translation>
+    </message>
+</context>
+<context>
+    <name>Remote::Profiles</name>
+    <message>
+        <source>New server</source>
+        <translation>Новый сервер</translation>
+    </message>
+    <message>
+        <source>Enter a profile name.</source>
+        <translation>Укажите название профиля.</translation>
+    </message>
+    <message>
+        <source>Enter an HTTP(S) server URL without credentials, query or fragment.</source>
+        <translation>Укажите HTTP(S)-адрес сервера без учётных данных, параметров запроса и фрагмента.</translation>
+    </message>
+    <message>
+        <source>Both mapping paths must be absolute and non-empty.</source>
+        <translation>Оба пути в соответствии должны быть абсолютными и непустыми.</translation>
+    </message>
+    <message>
+        <source>A remote folder is mapped more than once.</source>
+        <translation>Для одной удалённой папки задано несколько соответствий.</translation>
+    </message>
+    <message>
+        <source>The profile configuration is invalid. It has not been overwritten.</source>
+        <translation>Конфигурация профилей повреждена. Она не была перезаписана.</translation>
+    </message>
+    <message>
+        <source>Saved credentials are invalid. Enter them again.</source>
+        <translation>Сохранённые учётные данные повреждены. Введите их заново.</translation>
+    </message>
+    <message>
+        <source>Duplicate profile identifier.</source>
+        <translation>Повторяющийся идентификатор профиля.</translation>
+    </message>
+    <message>
+        <source>Could not save the local profile configuration.</source>
+        <translation>Не удалось сохранить локальную конфигурацию профилей.</translation>
+    </message>
+    <message>
+        <source>Windows could not encrypt profile credentials (%1).</source>
+        <translation>Windows не удалось зашифровать учётные данные профиля (%1).</translation>
+    </message>
+    <message>
+        <source>Saving credentials is supported by the Windows build only.</source>
+        <translation>Сохранение учётных данных поддерживается только в сборке для Windows.</translation>
+    </message>
+    <message>
+        <source>Credentials cannot be decrypted under this Windows account (%1). Enter them again.</source>
+        <translation>Учётные данные не удалось расшифровать для этой учётной записи Windows (%1). Введите их заново.</translation>
+    </message>
+    <message>
+        <source>These credentials can only be read by the Windows account that saved them.</source>
+        <translation>Эти учётные данные доступны только учётной записи Windows, которая их сохранила.</translation>
+    </message>
+</context>
 </TS>

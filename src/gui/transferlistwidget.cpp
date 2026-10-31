@@ -865,7 +865,7 @@ void TransferListWidget::displayListMenu()
     connect(actionPreviewFile, &QAction::triggered, this, &TransferListWidget::previewSelectedTorrents);
     auto *actionTorrentOptions = new QAction(UIThemeManager::instance()->getIcon(u"configure"_s), tr("Torrent &options..."), listMenu);
     connect(actionTorrentOptions, &QAction::triggered, this, &TransferListWidget::setTorrentOptions);
-    auto *actionOpenDestinationFolder = new QAction(UIThemeManager::instance()->getIcon(u"directory"_s), tr("Open destination &folder"), listMenu);
+    auto *actionOpenDestinationFolder = createAction(Command::OpenFolder, listMenu);
     connect(actionOpenDestinationFolder, &QAction::triggered, this, &TransferListWidget::openSelectedTorrentsFolder);
     auto *actionIncreaseQueuePos = createAction(Command::QueueUp, listMenu);
     connect(actionIncreaseQueuePos, &QAction::triggered, this, &TransferListWidget::increaseQueuePosSelectedTorrents);
@@ -1459,6 +1459,7 @@ QAction *TransferListWidget::createAction(const Command command, QObject *parent
     case Command::QueueUp: return new QAction(UIThemeManager::instance()->getIcon(u"go-up"_s), tr("Move &up", "i.e. move up in the queue"), parent);
     case Command::QueueDown: return new QAction(UIThemeManager::instance()->getIcon(u"go-down"_s), tr("Move &down", "i.e. Move down in the queue"), parent);
     case Command::QueueTop: return new QAction(UIThemeManager::instance()->getIcon(u"go-top"_s), tr("Move to &top", "i.e. Move to top of the queue"), parent);
+    case Command::OpenFolder: return new QAction(UIThemeManager::instance()->getIcon(u"directory"_s), tr("Open destination &folder"), parent);
     case Command::QueueBottom: return new QAction(UIThemeManager::instance()->getIcon(u"go-bottom"_s), tr("Move to &bottom", "i.e. Move to bottom of the queue"), parent);
     }
     Q_UNREACHABLE();

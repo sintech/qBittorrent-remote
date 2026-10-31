@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "client.h"
+#include "profiles.h"
 
 #include <QFile>
 #include <QFileInfo>
@@ -31,9 +32,7 @@ void Client::connectToServer(const Connection &connection)
     disconnectFromServer();
     m_connection = connection;
     auto &url = m_connection.url;
-    if (!url.isValid() || url.host().isEmpty()
-        || ((url.scheme() != u"http") && (url.scheme() != u"https"))
-        || !url.userInfo().isEmpty() || url.hasQuery() || url.hasFragment())
+    if (!validServerUrl(url))
     {
         emit errorOccurred(tr("Enter an HTTP(S) server URL without credentials, query or fragment."));
         return;

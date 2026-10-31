@@ -26,11 +26,40 @@ the required Qt archives and cancels obsolete CI runs on the work branch.
 Inherited CI pipelines are limited to master; they do not run for this feature
 branch or its pull request against base/5.2.4.
 
-Enter the server's Web UI URL (including a reverse proxy prefix, if applicable).
-Use an API key from the server's Web UI settings, or its username and password.
-URL, username, authentication type, window geometry and table layout are stored
-in a separate `qBittorrent-remote` settings profile. Passwords and API keys are
-kept in process memory only and must be entered on the next launch.
+Use **Tools > Connection profiles** to add a named server, its Web UI URL
+(including a reverse-proxy prefix), username/password or API key, and folder
+mappings. **Save** stores changes; **Save and connect** connects the selected
+profile. **File > Connect to Server** selects a saved profile and remembers the
+last selection for the next launch. Earlier previews' address/username migrate
+into an editable profile; their secrets were never stored and must be entered once.
+
+Profiles and mappings are kept in the client's local QSettings configuration
+(the current user's registry on Windows), separate from the local qBittorrent
+client. Passwords/API keys are stored only in an encrypted Windows DPAPI blob.
+They are readable by the Windows account that encrypted them. An unreadable blob
+is retained during unrelated edits, and the editor requests new credentials.
+The non-Windows development target does not fall back to plaintext secret storage.
+Cancel discards the editor's drafts. Invalid edits do not replace saved profiles.
+
+Each profile has its own **remote folder → local folder** table, for example:
+
+| Remote folder | Local folder |
+| --- | --- |
+| `/srv/downloads` | `D:\Downloads` |
+| `/srv/downloads/video` | `\\nas\video` |
+
+The longest matching remote folder wins; matches respect path-component
+boundaries. Linux remote paths are case-sensitive; Windows drive/UNC remote paths
+are case-insensitive. Use an absolute local drive path or accessible UNC share.
+Mappings change only local open operations, never paths sent to the server.
+
+Double-click a file/folder in **Content**, or press Enter, to open its mapped local
+counterpart with the default Windows application. The torrent context menu's
+original **Open destination folder** action opens the mapped content directory
+(or a file's parent). Missing mappings or local files produce an explanatory
+message. Editing an active profile's mappings applies immediately. Changing its
+connection details disconnects until reconnect; deleting the active profile also
+disconnects it. Files are accessed through the local filesystem/share.
 
 ## Implemented
 
@@ -107,7 +136,8 @@ The remote profile does not import the local client's appearance preferences.
 The original theme loader is available through the separate remote profile
 (`remote/theme` for a qbtheme path, `remote/style` for a Qt style); an appearance
 settings UI is still unported. Some new remote-specific dialogs still use English strings.
-Path translation, opening server files, and browsing server directories are deferred.
+Mapped local opening is supported; server directory browsing and file transfer
+through the Web API remain unported.
 No remote server shutdown command is sent when closing the client.
 
 The automated tests use an injected `QNetworkAccessManager` with scripted Qt

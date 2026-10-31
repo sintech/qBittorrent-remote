@@ -8,6 +8,7 @@
 #include <QTimer>
 
 #include "client.h"
+#include "profiles.h"
 #include "torrentmodel.h"
 
 class StatusBar;
@@ -35,9 +36,12 @@ namespace Remote
         explicit Window(QWidget *parent = nullptr, QNetworkAccessManager *network = nullptr);
         ~Window() override;
         Client *client();
+        bool connectProfile(const QString &id, QString *error = nullptr);
 
     public slots:
         void showConnectionDialog();
+        void showProfilesDialog();
+        void openRemotePath(const QString &path);
 
     protected:
         void closeEvent(QCloseEvent *event) override;
@@ -53,7 +57,12 @@ namespace Remote
         void addFiles();
         void addLinks();
         void showContextMenu(const QPoint &position);
+        void editProfiles(bool offerConnection);
+        bool reloadProfiles(QString *error = nullptr);
+        void openSelectedFolder();
 
+        QList<Profile> m_profiles;
+        Profile m_activeProfile;
         Client m_client;
         TorrentModel m_model;
         TorrentFilter m_filter;

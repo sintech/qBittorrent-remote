@@ -9,7 +9,7 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../gui" "${CMAKE_CURRENT_SOURCE_DIR}/../gui/properties" "${CMAKE_CURRENT_BINARY_DIR}")
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Network Widgets Svg)
-add_library(qbt_remote STATIC client.cpp client.h torrentmodel.cpp torrentmodel.h window.cpp window.h properties.cpp properties.h sidebar.cpp sidebar.h
+add_library(qbt_remote STATIC profiles.cpp profiles.h profileeditor.cpp profileeditor.h client.cpp client.h torrentmodel.cpp torrentmodel.h window.cpp window.h properties.cpp properties.h sidebar.cpp sidebar.h
     ../gui/uithememanager.cpp ../gui/uithememanager.h
     ../gui/uithemesource.cpp ../gui/uithemesource.h
     ../base/path.cpp ../base/utils/readfile.cpp
@@ -55,6 +55,7 @@ target_include_directories(qbt_remote PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" "${CM
 qt_add_executable(qbittorrent-remote main.cpp ../icons/icons.qrc)
 target_link_libraries(qbittorrent-remote PRIVATE qbt_remote Qt6::Svg)
 if(WIN32)
+    target_link_libraries(qbt_remote PRIVATE Crypt32)
     set_target_properties(qbittorrent-remote PROPERTIES WIN32_EXECUTABLE ON)
 endif()
 option(REMOTE_TESTING "Build remote frontend tests" OFF)
