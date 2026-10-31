@@ -13,7 +13,7 @@ add_library(qbt_remote STATIC client.cpp client.h torrentmodel.cpp torrentmodel.
 target_compile_definitions(qbt_remote PUBLIC QT_USE_QSTRINGBUILDER QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)
 target_link_libraries(qbt_remote PUBLIC Qt6::Core Qt6::Network Qt6::Widgets)
 target_include_directories(qbt_remote PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-add_executable(qbittorrent-remote main.cpp ../icons/icons.qrc)
+qt_add_executable(qbittorrent-remote main.cpp ../icons/icons.qrc)
 target_link_libraries(qbittorrent-remote PRIVATE qbt_remote Qt6::Svg)
 if(WIN32)
     set_target_properties(qbittorrent-remote PROPERTIES WIN32_EXECUTABLE ON)
