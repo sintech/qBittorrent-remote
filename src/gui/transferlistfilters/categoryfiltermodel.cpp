@@ -30,8 +30,11 @@
 
 #include <QHash>
 #include <QIcon>
+#include <functional>
 
+#ifndef QBT_REMOTE_CLIENT
 #include "base/bittorrent/session.h"
+#endif
 #include "base/global.h"
 #include "gui/uithememanager.h"
 
@@ -62,6 +65,8 @@ public:
             m_parent->m_childUids.removeOne(uid);
         }
     }
+
+    void setCount(int value) { increaseTorrentsCount(value - m_torrentsCount); }
 
     QString name() const
     {
@@ -185,6 +190,7 @@ CategoryFilterModel::CategoryFilterModel(QObject *parent)
     : QAbstractItemModel(parent)
     , m_rootItem(new CategoryModelItem)
 {
+#ifndef QBT_REMOTE_CLIENT
     using namespace BitTorrent;
     const auto *session = Session::instance();
 
@@ -196,6 +202,9 @@ CategoryFilterModel::CategoryFilterModel(QObject *parent)
     connect(session, &Session::torrentAboutToBeRemoved, this, &CategoryFilterModel::torrentAboutToBeRemoved);
 
     populate();
+#else
+    setSnapshot({},0);
+#endif
 }
 
 CategoryFilterModel::~CategoryFilterModel()
@@ -320,6 +329,7 @@ QModelIndex CategoryFilterModel::index(CategoryModelItem *item) const
     return index(item->pos(), 0, index(item->parent()));
 }
 
+#ifndef QBT_REMOTE_CLIENT
 void CategoryFilterModel::categoryAdded(const QString &categoryName)
 {
     CategoryModelItem *parent = m_rootItem;
@@ -456,13 +466,23 @@ void CategoryFilterModel::populate()
     }
 }
 
+#endif
+
 CategoryModelItem *CategoryFilterModel::findItem(const QString &fullName) const
 {
     if (fullName.isEmpty())
         return m_rootItem->childAt(1); // "Uncategorized" item
 
     CategoryModelItem *item = m_rootItem;
+#ifdef QBT_REMOTE_CLIENT
+    QStringList expanded;
+    int separator = 0;
+    while ((separator = fullName.indexOf(u'/',separator)) >= 0) expanded.append(fullName.first(separator++));
+    expanded.append(fullName);
+    for (const QString &subcat : expanded)
+#else
     for (const QString &subcat : asConst(BitTorrent::Session::expandCategory(fullName)))
+#endif
     {
         const QString subcatName = shortName(subcat);
         if (!item->hasChild(subcatName))
@@ -473,3 +493,45 @@ CategoryModelItem *CategoryFilterModel::findItem(const QString &fullName) const
 
     return item;
 }
+
+#ifdef QBT_REMOTE_CLIENT
+void CategoryFilterModel::setSnapshot(const QMap<QString,int> &counts, const int total)
+{
+    if (m_total == total && m_snapshot == counts) return;
+    const bool reset = m_total < 0 || m_snapshot.keys() != counts.keys();
+    if (reset)
+    {
+        beginResetModel();
+        m_rootItem->clear();
+        m_rootItem->addChild(CategoryModelItem::UID_ALL,new CategoryModelItem(nullptr,tr("All"),total));
+        m_rootItem->addChild(CategoryModelItem::UID_UNCATEGORIZED,new CategoryModelItem(nullptr,tr("Uncategorized"),counts.value(QString())));
+        for (auto it=counts.cbegin();it!=counts.cend();++it)
+        {
+            if (it.key().isEmpty()) continue;
+            auto *parent = m_rootItem;
+            for (const auto &part : it.key().split(u'/'))
+            {
+                if (!parent->hasChild(part)) new CategoryModelItem(parent,part);
+                parent = parent->child(part);
+            }
+        }
+        for (auto it=counts.cbegin();it!=counts.cend();++it)
+            if (!it.key().isEmpty()) findItem(it.key())->increaseTorrentsCount(it.value());
+        endResetModel();
+    }
+    else
+    {
+        for (auto it=counts.cbegin();it!=counts.cend();++it)
+            findItem(it.key())->increaseTorrentsCount(it.value()-m_snapshot.value(it.key()));
+        m_rootItem->childAt(0)->setCount(total);
+        const std::function<void(const QModelIndex &)> notify = [&](const QModelIndex &parent)
+        {
+            if (!rowCount(parent)) return;
+            emit dataChanged(index(0,0,parent),index(rowCount(parent)-1,0,parent));
+            for (int row=0;row<rowCount(parent);++row) notify(index(row,0,parent));
+        };
+        notify({});
+    }
+    m_snapshot=counts; m_total=total;
+}
+#endif

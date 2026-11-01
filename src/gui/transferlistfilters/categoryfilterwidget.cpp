@@ -183,7 +183,9 @@ CategoryFilterWidget::CategoryFilterWidget(QWidget *parent, QAbstractItemModel *
 {
     setModel(model);
     configureView();
-    connect(model, &QAbstractItemModel::modelReset, this, [this] { updateGeometry(); });
+    connect(model, &QAbstractItemModel::modelReset, this, [this] { adjustIndentation(); updateGeometry(); });
+    connect(model, &QAbstractItemModel::rowsRemoved, this, [this] { adjustIndentation(); updateGeometry(); });
+    adjustIndentation();
     connect(this, &QTreeView::collapsed, this, [this] { updateGeometry(); });
     connect(this, &QTreeView::expanded, this, [this] { updateGeometry(); });
 }

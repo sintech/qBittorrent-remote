@@ -32,7 +32,9 @@
 #include <QIcon>
 #include <QList>
 
+#ifndef QBT_REMOTE_CLIENT
 #include "base/bittorrent/session.h"
+#endif
 #include "base/global.h"
 #include "gui/uithememanager.h"
 
@@ -58,6 +60,8 @@ public:
         return m_torrentsCount;
     }
 
+    void setCount(int value) { m_torrentsCount=value; }
+
     void increaseTorrentsCount()
     {
         ++m_torrentsCount;
@@ -77,6 +81,7 @@ private:
 TagFilterModel::TagFilterModel(QObject *parent)
     : QAbstractListModel(parent)
 {
+#ifndef QBT_REMOTE_CLIENT
     using Session = BitTorrent::Session;
     const auto *session = Session::instance();
 
@@ -87,6 +92,9 @@ TagFilterModel::TagFilterModel(QObject *parent)
     connect(session, &Session::torrentsLoaded, this, &TagFilterModel::torrentsLoaded);
     connect(session, &Session::torrentAboutToBeRemoved, this, &TagFilterModel::torrentAboutToBeRemoved);
     populate();
+#else
+    setSnapshot({},0,0);
+#endif
 }
 
 TagFilterModel::~TagFilterModel() = default;
@@ -183,6 +191,7 @@ Tag TagFilterModel::tag(const QModelIndex &index) const
     return m_tagItems[row].tag();
 }
 
+#ifndef QBT_REMOTE_CLIENT
 void TagFilterModel::tagAdded(const Tag &tag)
 {
     const int row = m_tagItems.count();
@@ -306,6 +315,8 @@ void TagFilterModel::populate()
     }
 }
 
+#endif
+
 void TagFilterModel::addToModel(const Tag &tag, const int count)
 {
     m_tagItems.append(TagModelItem(tag, count));
@@ -365,3 +376,24 @@ TagModelItem *TagFilterModel::untaggedItem()
     Q_ASSERT(m_tagItems.size() > ROW_UNTAGGED);
     return &m_tagItems[ROW_UNTAGGED];
 }
+
+#ifdef QBT_REMOTE_CLIENT
+void TagFilterModel::setSnapshot(const QMap<QString,int> &counts, const int total, const int untagged)
+{
+    if (m_snapshot==counts && m_total==total && m_untagged==untagged) return;
+    if (m_total<0 || m_snapshot.keys()!=counts.keys())
+    {
+        beginResetModel();m_tagItems.clear();
+        addToModel(Tag(),total);addToModel(Tag(),untagged);
+        for (auto it=counts.cbegin();it!=counts.cend();++it) addToModel(Tag(it.key()),it.value());
+        endResetModel();
+    }
+    else
+    {
+        allTagsItem()->setCount(total);untaggedItem()->setCount(untagged);
+        for (auto it=counts.cbegin();it!=counts.cend();++it) findItem(Tag(it.key()))->setCount(it.value());
+        emit dataChanged(index(0,0),index(rowCount()-1,0));
+    }
+    m_snapshot=counts;m_total=total;m_untagged=untagged;
+}
+#endif

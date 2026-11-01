@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "sidebar.h"
 #include <QMenu>
+#include <functional>
 
 #include <QCoreApplication>
 #include <QListWidget>
 #include <QTreeView>
-#include <QStandardItemModel>
+#include <QMap>
+#include "gui/transferlistfilters/categoryfiltermodel.h"
+#include "gui/transferlistfilters/categoryfilterproxymodel.h"
+#include "gui/transferlistfilters/tagfiltermodel.h"
+#include "gui/transferlistfilters/tagfilterproxymodel.h"
 #include "gui/transferlistfilters/basefilterwidget.h"
 #include "gui/transferlistfilters/statusfilterwidget.h"
 #include "gui/transferlistfilters/categoryfilterwidget.h"
@@ -31,7 +36,11 @@ namespace
 
     QString selection(const QTreeView *tree)
     {
-        return tree->currentIndex().data(Qt::UserRole).toString();
+        const auto index = tree->currentIndex();
+        if (!index.isValid() || (!index.parent().isValid() && index.row()==0)) return {};
+        if (!index.parent().isValid() && index.row()==1) return u""_s;
+        if (auto *proxy = dynamic_cast<CategoryFilterProxyModel *>(tree->model())) return proxy->categoryName(index);
+        return static_cast<TagFilterProxyModel *>(tree->model())->tag(index).toString();
     }
 
     QString caption(const QString &source, const QString &count)
@@ -45,8 +54,16 @@ Sidebar::Sidebar(QWidget *parent)
 {
     setObjectName(u"remoteSidebar"_s);
     m_status = new StatusFilterWidget(this, nullptr);
-    m_categories = new CategoryFilterWidget(this, new QStandardItemModel(this));
-    m_tags = new TagFilterWidget(this, new QStandardItemModel(this));
+    auto *categories = new CategoryFilterProxyModel(this);
+    categories->setSortCaseSensitivity(Qt::CaseInsensitive);
+    categories->setSourceModel(new CategoryFilterModel(categories));
+    m_categories = new CategoryFilterWidget(this,categories);
+    m_categories->setObjectName(u"remoteCategoryFilter"_s);
+    auto *tags = new TagFilterProxyModel(this);
+    tags->setSortCaseSensitivity(Qt::CaseInsensitive);
+    tags->setSourceModel(new TagFilterModel(tags));
+    m_tags = new TagFilterWidget(this,tags);
+    m_tags->setObjectName(u"remoteTagFilter"_s);
     m_trackers = new BaseFilterWidget(this, nullptr);
     const QList<QPair<const char *, QWidget *>> filters {
         {"Status", m_status}, {"Categories", m_categories}, {"Tags", m_tags}, {"Trackers", m_trackers}};
@@ -66,7 +83,7 @@ Sidebar::Sidebar(QWidget *parent)
         connect(view, &QWidget::customContextMenuRequested, this, [this, view, kind, builder, selectedValue](const QPoint &point)
         {
             const QString value = selectedValue();
-            const bool normal = !value.isEmpty() && value != u"*" && value != u"__none__" && value != u"all";
+            const bool normal = !value.isEmpty();
             auto *menu = builder(this, normal, [this, kind, value](const QString &op) { emit contextCommand(kind, op, value); });
             menu->popup(view->mapToGlobal(point));
         });
@@ -151,37 +168,46 @@ void Sidebar::updateData(const TorrentModel &model, const QJsonObject &categorie
         }
         list->setFixedHeight(list->sizeHint().height());
     };
-    const auto updateTree = [this, &model](QTreeView *tree, const QStringList &values, const QHash<QString, int> &counts, const char *context, const char *emptyName)
+    // Bind API counts to the original models, preserving their icons, labels,
+    // special rows, natural sorting and category hierarchy.
     {
-        const QString previous = selection(tree);
-        const QSignalBlocker blocker(tree->selectionModel());
-        auto *data = static_cast<QStandardItemModel *>(tree->model());
-        data->clear();
-        auto *all = new QStandardItem(UIThemeManager::instance()->getIcon(u"filter-all"_s), QCoreApplication::translate(context, "All (%1)").arg(model.rowCount()));
-        data->appendRow(all);
-        if (emptyName)
+        const auto previous = selection(m_categories);
+        auto *proxy = static_cast<CategoryFilterProxyModel *>(m_categories->model());
+        auto *source = static_cast<CategoryFilterModel *>(proxy->sourceModel());
+        QSet<QString> expanded;
+        const std::function<void(const QModelIndex &)> remember = [&](const QModelIndex &parent)
         {
-            auto *empty = new QStandardItem(QCoreApplication::translate(context, emptyName).arg(counts.value(u""_s)));
-            empty->setData(u""_s, Qt::UserRole);
-            data->appendRow(empty);
-        }
-        for (const auto &value : values)
-        {
-            auto *row = new QStandardItem(UIThemeManager::instance()->getIcon(tree == m_categories ? u"directory"_s : u"tag"_s), caption(value, QString::number(counts.value(value))));
-            row->setData(value, Qt::UserRole);
-            row->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-            data->appendRow(row);
-        }
-        tree->setCurrentIndex(data->index(0, 0));
-        for (int row = 1; !previous.isNull() && row < data->rowCount(); ++row)
-            if (data->index(row, 0).data(Qt::UserRole).toString() == previous)
-                tree->setCurrentIndex(data->index(row, 0));
-        tree->updateGeometry();
-    };
-    updateTree(m_categories, categories.keys(), categoryCounts, "CategoryFilterWidget", "Uncategorized (%1)");
-    auto tagNames = tags.values();
-    tagNames.sort();
-    updateTree(m_tags, tagNames, tagCounts, "TagFilterWidget", "Untagged (%1)");
+            for (int row=0;row<proxy->rowCount(parent);++row)
+            {
+                const auto index=m_categories->model()->index(row,0,parent);
+                if (m_categories->isExpanded(index)) expanded.insert(proxy->categoryName(index));
+                remember(index);
+            }
+        };
+        remember({});
+        QMap<QString,int> counts;
+        for (const auto &name : categories.keys()) counts.insert(name,categoryCounts.value(name));
+        for (auto it=categoryCounts.cbegin();it!=categoryCounts.cend();++it) counts.insert(it.key(),it.value());
+        const QSignalBlocker blocker(m_categories->selectionModel());
+        source->setSnapshot(counts,model.rowCount());
+        for (const auto &name : expanded) m_categories->expand(proxy->index(name));
+        m_categories->setCurrentIndex(previous.isNull() ? m_categories->model()->index(0,0) : proxy->index(previous));
+        if (!m_categories->currentIndex().isValid()) m_categories->setCurrentIndex(m_categories->model()->index(0,0));
+        m_categories->updateGeometry();
+    }
+    {
+        const auto previous=selection(m_tags);
+        auto *proxy=static_cast<TagFilterProxyModel *>(m_tags->model());
+        auto *source=static_cast<TagFilterModel *>(proxy->sourceModel());
+        QMap<QString,int> counts;
+        for (const auto &tag : tags) counts.insert(tag,tagCounts.value(tag));
+        for (auto it=tagCounts.cbegin();it!=tagCounts.cend();++it) if (!it.key().isEmpty()) counts.insert(it.key(),it.value());
+        const QSignalBlocker blocker(m_tags->selectionModel());
+        source->setSnapshot(counts,model.rowCount(),tagCounts.value(QString()));
+        auto selected = previous.isNull() ? m_tags->model()->index(0,0) : previous.isEmpty() ? m_tags->model()->index(1,0) : proxy->index(Tag(previous));
+        m_tags->setCurrentIndex(selected.isValid() ? selected : m_tags->model()->index(0,0));
+        m_tags->updateGeometry();
+    }
     auto trackerNames = trackerCounts.keys();
     trackerNames.sort();
     updateList(m_trackers, trackerNames, trackerCounts, "TrackersFilterWidget", nullptr);

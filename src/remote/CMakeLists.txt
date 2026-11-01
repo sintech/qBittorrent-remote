@@ -13,6 +13,11 @@ add_library(qbt_remote STATIC settingsdialog.cpp settingsdialog.h torrentmetadat
     ../gui/uithememanager.cpp ../gui/uithememanager.h
     ../gui/uithemesource.cpp ../gui/uithemesource.h
     ../base/path.cpp ../base/utils/readfile.cpp
+    ../base/tag.cpp ../base/tag.h
+    ../gui/transferlistfilters/categoryfiltermodel.cpp ../gui/transferlistfilters/categoryfiltermodel.h
+    ../gui/transferlistfilters/categoryfilterproxymodel.cpp ../gui/transferlistfilters/categoryfilterproxymodel.h
+    ../gui/transferlistfilters/tagfiltermodel.cpp ../gui/transferlistfilters/tagfiltermodel.h
+    ../gui/transferlistfilters/tagfilterproxymodel.cpp ../gui/transferlistfilters/tagfilterproxymodel.h
     ../gui/transferlistfilterswidget.cpp ../gui/transferlistfilterswidget.h
     ../gui/transferlistfilters/basefilterwidget.cpp ../gui/transferlistfilters/basefilterwidget.h
     ../gui/transferlistfilters/statusfilterwidget.cpp ../gui/transferlistfilters/statusfilterwidget.h

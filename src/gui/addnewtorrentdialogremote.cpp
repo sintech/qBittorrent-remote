@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QFileIconProvider>
 #include <QHeaderView>
+#include <QSplitter>
 #include <QInputDialog>
 #include <QMenu>
 #include <QScopedValueRollback>
@@ -166,7 +167,7 @@ AddNewTorrentDialog::AddNewTorrentDialog(const QString &source, const QJsonObjec
         for (int column = 0; column < m_ui->contentTreeView->model()->columnCount(); ++column)
             m_ui->contentTreeView->setColumnWidth(column, m_ui->contentTreeView->header()->defaultSectionSize());
     m_ui->contentTreeView->setHeaderSettingsKey(u"remote/addContentHeader"_s);
-    m_ui->checkBoxNeverShow->hide();
+    m_ui->checkBoxNeverShow->setChecked(settings.value(u"remote/addDialog/skip",false).toBool());
     auto *filter = new LineEdit(this);
     filter->setPlaceholderText(tr("Filter files..."));
     m_ui->contentFilterLayout->insertWidget(0, filter);
@@ -176,16 +177,20 @@ AddNewTorrentDialog::AddNewTorrentDialog(const QString &source, const QJsonObjec
     connect(this, &QDialog::accepted, this, [this, historyKey]
     {
         QSettings settings;
+        settings.setValue(u"remote/addDialog/skip"_s,m_ui->checkBoxNeverShow->isChecked());
         settings.setValue(historyKey + u"/remember", m_ui->checkBoxRememberLastSavePath->isChecked());
         if (m_ui->checkBoxRememberLastSavePath->isChecked()) settings.setValue(historyKey + u"/savePath", m_ui->savePath->pathText());
         else settings.remove(historyKey + u"/savePath");
         if (m_ui->defaultCategoryCheckbox->isChecked()) settings.setValue(historyKey + u"/category", m_ui->categoryComboBox->currentText());
     });
     resize(settings.value(u"remote/addDialog/size", size()).toSize());
+    m_ui->splitter->restoreState(settings.value(u"remote/addDialog/splitter"_s).toByteArray());
+    connect(this,&QDialog::finished,this,[this] { saveViewState(); });
+    connect(m_ui->splitter,&QSplitter::splitterMoved,this,[this] { saveViewState(); });
 }
 AddNewTorrentDialog::~AddNewTorrentDialog()
 {
-    QSettings().setValue(u"remote/addDialog/size"_s, size());
+    saveViewState();
     delete m_ui;
 }
 QUrlQuery AddNewTorrentDialog::parameters() const
@@ -230,4 +235,12 @@ QMap<int, QStringList> AddNewTorrentDialog::filePriorities() const
         }
     };
     visit(model->invisibleRootItem()); return result;
+}
+
+void AddNewTorrentDialog::saveViewState() const
+{
+    QSettings settings;
+    settings.setValue(u"remote/addDialog/size"_s,size());
+    settings.setValue(u"remote/addDialog/splitter"_s,m_ui->splitter->saveState());
+    m_ui->contentTreeView->saveHeaderSettings();
 }

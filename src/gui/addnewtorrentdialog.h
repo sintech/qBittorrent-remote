@@ -73,6 +73,7 @@ public:
 private:
     Ui::AddNewTorrentDialog *m_ui = nullptr;
     bool m_updatingPriorities = false;
+    void saveViewState() const;
 #else
     explicit AddNewTorrentDialog(const BitTorrent::TorrentDescriptor &torrentDescr
             , const BitTorrent::AddTorrentParams &inParams, QWidget *parent);

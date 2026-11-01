@@ -242,7 +242,8 @@ bool TorrentFilter::filterAcceptsRow(const int row, const QModelIndex &) const
         return false;
     if (!m_tracker.isNull() && QUrl(data.value(u"tracker"_s).toString()).host() != m_tracker)
         return false;
-    if (!m_category.isNull() && (data.value(u"category"_s).toString() != m_category))
+    if (!m_category.isNull() && (data.value(u"category"_s).toString() != m_category)
+        && (m_category.isEmpty() || !data.value(u"category"_s).toString().startsWith(m_category + u'/')))
         return false;
     if (!m_tag.isNull() && !data.value(u"tags"_s).toString().split(u", "_s).contains(m_tag))
         return false;

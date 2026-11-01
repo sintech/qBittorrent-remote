@@ -38,6 +38,7 @@
 #include <QFile>
 #include <QDir>
 #include "profiles.h"
+#include "sidebar.h"
 #include "settingsdialog.h"
 #include "profileeditor.h"
 #include "gui/transferlistwidget.h"
@@ -48,6 +49,10 @@
 #include "gui/transferlistfilterswidget.h"
 #include "gui/transferlistfilters/statusfilterwidget.h"
 #include "gui/transferlistfilters/categoryfilterwidget.h"
+#include "gui/transferlistfilters/categoryfiltermodel.h"
+#include "gui/transferlistfilters/categoryfilterproxymodel.h"
+#include "gui/transferlistfilters/tagfiltermodel.h"
+#include "gui/uithememanager.h"
 #include "gui/transferlistfilters/tagfilterwidget.h"
 #include "gui/statusbar.h"
 #include "gui/lineedit.h"
@@ -566,8 +571,8 @@ private slots:
         QVERIFY(sidebar);
         auto *status = sidebar->findChild<StatusFilterWidget *>();
         QCOMPARE(status->count(), 14);
-        QVERIFY(sidebar->findChild<CategoryFilterWidget *>()->currentIndex().data(Qt::UserRole).isNull());
-        QVERIFY(sidebar->findChild<TagFilterWidget *>()->currentIndex().data(Qt::UserRole).isNull());
+        QVERIFY(qobject_cast<Sidebar *>(sidebar)->category().isNull());
+        QVERIFY(qobject_cast<Sidebar *>(sidebar)->tag().isNull());
         TorrentModel model;
         model.applySync(QJsonObject {{u"full_update"_s, true}, {u"torrents"_s, QJsonObject {
             {u"a"_s, QJsonObject {{u"progress"_s, 0.42}, {u"state"_s, u"stoppedDL"_s}}}}}});
@@ -1070,8 +1075,10 @@ private slots:
         QVERIFY(dialog->restartRequired()); QVERIFY(window.findChild<QTreeView *>(u"remoteTorrentTable"_s)->alternatingRowColors());
         QVERIFY(browser.urls.isEmpty()); QVERIFY(network.sent.isEmpty());
         AddNewTorrentDialog add(u"magnet:?xt=urn:btih:abc"_s,{},{});
-        QVERIFY(add.findChild<QCheckBox *>(u"checkBoxNeverShow"_s)->isHidden());
-        add.accept(); QVERIFY(QSettings().value(u"remote/addDialog/skip"_s).toBool());
+        auto *neverShow = add.findChild<QCheckBox *>(u"checkBoxNeverShow"_s);
+        QVERIFY(!neverShow->isHidden()); QVERIFY(neverShow->isChecked());
+        neverShow->setChecked(false); add.accept();
+        QVERIFY(!QSettings().value(u"remote/addDialog/skip"_s).toBool());
     }
 
     void startupAutoConnectionCanBeDisabled()
@@ -1098,6 +1105,62 @@ private slots:
         QTRY_VERIFY(std::any_of(network.sent.cbegin(),network.sent.cend(),[](const auto &sent){return sent.request.url().path().endsWith(u"torrents/delete");}));
         for(const auto &sent:network.sent) if(sent.request.url().path().endsWith(u"torrents/delete"))
         { const QUrlQuery query(QString::fromUtf8(sent.body));QCOMPARE(query.queryItemValue(u"deleteFiles"_s),u"false"_s); }
+    }
+
+
+    void addDialogSavesHeaderAndSplitterImmediatelyOnClose()
+    {
+        QList<int> expected;
+        {
+            AddNewTorrentDialog dialog(u"magnet:?xt=abc"_s,{},{});
+            dialog.resize(1150,760);dialog.show();QTest::qWait(25);
+            auto *tree=dialog.findChild<TorrentContentWidget *>();
+            tree->setColumnWidth(0,267);tree->setColumnWidth(1,136);tree->setColumnWidth(3,172);
+            tree->header()->moveSection(tree->header()->visualIndex(3),1);
+            auto *splitter=dialog.findChild<QSplitter *>(u"splitter"_s);QVERIFY(splitter);
+            splitter->setSizes({570,540});QTest::qWait(20);expected=splitter->sizes();
+            dialog.reject();
+            // Reopen before the previous widgets' deferred destruction.
+            AddNewTorrentDialog next(u"magnet:?xt=def"_s,{},{});next.show();QTest::qWait(25);
+            auto *restored=next.findChild<TorrentContentWidget *>();
+            QCOMPARE(restored->columnWidth(0),267);QCOMPARE(restored->columnWidth(1),136);QCOMPARE(restored->columnWidth(3),172);
+            QCOMPARE(restored->header()->visualIndex(3),1);
+            const auto actual=next.findChild<QSplitter *>(u"splitter"_s)->sizes();
+            QVERIFY(qAbs(actual[0]-expected[0])<8);QVERIFY(qAbs(actual[1]-expected[1])<8);
+            QCOMPARE(next.size(),QSize(1150,760));
+        }
+        AddNewTorrentDialog reopened(u"magnet:?xt=ghi"_s,{},{});
+        QCOMPARE(reopened.findChild<TorrentContentWidget *>()->columnWidth(0),267);
+    }
+
+    void sidebarUsesNativeCategoryAndTagPresentation()
+    {
+        TorrentModel torrents;
+        torrents.applySync(QJsonObject{{u"full_update"_s,true},{u"torrents"_s,QJsonObject{
+            {u"a"_s,QJsonObject{{u"category"_s,u"Videos"_s},{u"tags"_s,u"tag"_s}}},
+            {u"b"_s,QJsonObject{{u"category"_s,u"Videos/Series"_s},{u"tags"_s,u""_s}}}}}});
+        Sidebar sidebar;sidebar.resize(260,700);sidebar.show();
+        QJsonObject categories{{u"Videos"_s,QJsonObject()},{u"Videos/Series"_s,QJsonObject()}};
+        sidebar.updateData(torrents,categories,{u"tag"_s});
+        auto *view=sidebar.findChild<CategoryFilterWidget *>();
+        auto *proxy=dynamic_cast<CategoryFilterProxyModel *>(view->model());QVERIFY(proxy);
+        auto *source=qobject_cast<CategoryFilterModel *>(proxy->sourceModel());QVERIFY(source);
+        QAbstractItemModelTester tester(source,QAbstractItemModelTester::FailureReportingMode::QtTest);
+        const auto videos=proxy->index(u"Videos"_s);const auto series=proxy->index(u"Videos/Series"_s);
+        QCOMPARE(videos.data(Qt::UserRole).toInt(),2);QCOMPARE(series.parent(),videos);
+        QCOMPARE(view->model()->index(0,0).data().toString(),u"All (2)"_s);
+        const auto icon=UIThemeManager::instance()->getIcon(u"view-categories"_s,u"inode-directory"_s);
+        QCOMPARE(qvariant_cast<QIcon>(videos.data(Qt::DecorationRole)).cacheKey(),icon.cacheKey());
+        QCOMPARE(qvariant_cast<QIcon>(view->model()->index(1,0).data(Qt::DecorationRole)).cacheKey(),icon.cacheKey());
+        QVERIFY(view->indentation()>0);view->expand(videos);view->setCurrentIndex(series);
+        sidebar.updateData(torrents,categories,{u"tag"_s});QVERIFY(view->isExpanded(videos));QCOMPARE(sidebar.category(),u"Videos/Series"_s);
+        sidebar.updateData(torrents,QJsonObject{{u"Plain"_s,QJsonObject()}},{});
+        // Existing torrent categories are retained even during partial category updates.
+        torrents.clear();sidebar.updateData(torrents,QJsonObject{{u"Plain"_s,QJsonObject()}},{});
+        QCOMPARE(view->indentation(),0);
+        auto *tags=sidebar.findChild<TagFilterWidget *>();
+        const auto tagIcon=UIThemeManager::instance()->getIcon(u"tags"_s,u"inode-directory"_s);
+        QCOMPARE(qvariant_cast<QIcon>(tags->model()->index(0,0).data(Qt::DecorationRole)).cacheKey(),tagIcon.cacheKey());
     }
 
     void nativeWindowStartsDisconnected()

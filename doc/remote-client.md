@@ -90,7 +90,9 @@ disconnects it. Files are accessed through the local filesystem/share.
 - Incremental `/sync/maindata` polling, preserving existing row indexes and
   selections; full snapshots remove obsolete fields and rows on reconnect.
 - Independent status, category, tag and tracker filters with counts, plus
-  case-insensitive torrent-name/server-path search.
+  case-insensitive torrent-name/server-path search. Category and tag presentation
+  uses the original models/proxies, including icons, indentation, special rows,
+  natural sorting and nested categories.
 - Start, stop, force start, recheck, reannounce, queue-position commands.
 - Add local `.torrent` files or magnet/HTTP(S) URLs. URL entry uses the original
   `DownloadFromURLDialog`, including clipboard handling and duplicate removal.
@@ -106,7 +108,8 @@ disconnects it. Files are accessed through the local filesystem/share.
   if requested. A failed update leaves the torrent stopped without replaying writes.
   Magnet/HTTP URL metadata is obtained by the server after acceptance.
   Options > Adding torrents controls whether this dialog is shown. There is no
-  menu checkbox or “never show again” checkbox in the addition dialog.
+  menu checkbox; the original “never show again” checkbox remains in the addition
+  dialog and changes the same setting after acceptance.
 - Remove torrents; server content deletion is unchecked by default and requires
   the original `DeletionConfirmationDialog`.
 - Original General property layout with the actual upstream downloaded-pieces
@@ -144,7 +147,8 @@ disconnects it. Files are accessed through the local filesystem/share.
   including when restoring older settings. Content widths survive torrent changes.
 - Clicking the active lower-panel tab collapses the panel to its tab bar using
   the original splitter logic; clicking a tab restores its previous height.
-  The collapsed state survives restart.
+  The collapsed state survives restart. The add-torrent dialog also retains its
+  size, splitter and column widths/order when accepted or cancelled.
 - Connection state, session transfer rates and server free space.
 - API-key/password authentication, reverse proxy prefixes, request timeouts,
   manual reconnect and exponential retry for interrupted reads. Redirects are

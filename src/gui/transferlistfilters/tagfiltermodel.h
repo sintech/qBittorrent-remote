@@ -31,6 +31,7 @@
 
 #include <QtContainerFwd>
 #include <QAbstractItemModel>
+#include <QMap>
 
 #include "base/bittorrent/torrent.h"
 #include "base/tagset.h"
@@ -47,6 +48,9 @@ class TagFilterModel final : public QAbstractListModel
 public:
     explicit TagFilterModel(QObject *parent = nullptr);
     ~TagFilterModel() override;
+#ifdef QBT_REMOTE_CLIENT
+    void setSnapshot(const QMap<QString,int> &counts, int total, int untagged);
+#endif
 
     static bool isSpecialItem(const QModelIndex &index);
 
@@ -59,6 +63,7 @@ public:
     QModelIndex index(const Tag &tag) const;
     Tag tag(const QModelIndex &index) const;
 
+#ifndef QBT_REMOTE_CLIENT
 private slots:
     void tagAdded(const Tag &tag);
     void tagRemoved(const Tag &tag);
@@ -69,6 +74,8 @@ private slots:
 
 private:
     void populate();
+#endif
+private:
     void addToModel(const Tag &tag, int count);
     void removeFromModel(int row);
     bool isValidRow(int row) const;
@@ -78,5 +85,9 @@ private:
     TagModelItem *allTagsItem();
     TagModelItem *untaggedItem();
 
+#ifdef QBT_REMOTE_CLIENT
+    QMap<QString,int> m_snapshot;
+    int m_total = -1, m_untagged = -1;
+#endif
     QList<TagModelItem> m_tagItems;  // Index corresponds to its row
 };

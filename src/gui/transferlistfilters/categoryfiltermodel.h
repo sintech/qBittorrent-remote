@@ -30,6 +30,7 @@
 
 #include <QtContainerFwd>
 #include <QAbstractItemModel>
+#include <QMap>
 
 #include "base/bittorrent/torrent.h"
 
@@ -45,6 +46,9 @@ class CategoryFilterModel final : public QAbstractItemModel
 public:
     explicit CategoryFilterModel(QObject *parent = nullptr);
     ~CategoryFilterModel();
+#ifdef QBT_REMOTE_CLIENT
+    void setSnapshot(const QMap<QString,int> &counts, int total);
+#endif
 
     static bool isSpecialItem(const QModelIndex &index);
 
@@ -59,6 +63,7 @@ public:
     QModelIndex index(const QString &categoryName) const;
     QString categoryName(const QModelIndex &index) const;
 
+#ifndef QBT_REMOTE_CLIENT
 private slots:
     void categoryAdded(const QString &categoryName);
     void categoryRemoved(const QString &categoryName);
@@ -69,8 +74,14 @@ private slots:
 
 private:
     void populate();
+
+#endif
+private:
     QModelIndex index(CategoryModelItem *item) const;
     CategoryModelItem *findItem(const QString &fullName) const;
-
+#ifdef QBT_REMOTE_CLIENT
+    QMap<QString,int> m_snapshot;
+    int m_total = -1;
+#endif
     CategoryModelItem *m_rootItem = nullptr;
 };
