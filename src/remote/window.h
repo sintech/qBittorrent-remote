@@ -21,6 +21,9 @@ class QTreeWidget;
 class QLabel;
 class QSplitter;
 class QTabWidget;
+class QSystemTrayIcon;
+class QAction;
+class QEvent;
 
 namespace Ui { class MainWindow; }
 
@@ -42,12 +45,17 @@ namespace Remote
         void startLastProfile();
         void showConnectionDialog();
         void showProfilesDialog();
+        void showSettingsDialog();
+        void openServerWebUi();
         void openRemotePath(const QString &path);
 
     protected:
         void closeEvent(QCloseEvent *event) override;
+        void changeEvent(QEvent *event) override;
 
     private:
+        void applyClientSettings();
+        void torrentDoubleClicked();
         QStringList selectedHashes() const;
         void applySync(const QJsonObject &sync);
         void updateActions();
@@ -67,6 +75,9 @@ namespace Remote
 
         QList<Profile> m_profiles;
         Profile m_activeProfile;
+        QSystemTrayIcon *m_tray = nullptr;
+        QAction *m_webUiAction = nullptr;
+        bool m_forceExit = false;
         Client m_client;
         TorrentModel m_model;
         TorrentFilter m_filter;

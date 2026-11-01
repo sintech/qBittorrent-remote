@@ -13517,6 +13517,30 @@ Please choose a different name and try again.</source>
         <source>Could not load server download defaults.</source>
         <translation>Не удалось загрузить с сервера настройки добавления торрентов.</translation>
     </message>
+    <message>
+        <source>Server Web UI…</source>
+        <translation>Web UI сервера…</translation>
+    </message>
+    <message>
+        <source>Client settings</source>
+        <translation>Настройки клиента</translation>
+    </message>
+    <message>
+        <source>Client settings…</source>
+        <translation>Настройки клиента…</translation>
+    </message>
+    <message>
+        <source>Restart the client to apply language and appearance changes.</source>
+        <translation>Перезапустите клиент для применения языка и оформления.</translation>
+    </message>
+    <message>
+        <source>Show window</source>
+        <translation>Показать окно</translation>
+    </message>
+    <message>
+        <source>Exit</source>
+        <translation>Выход</translation>
+    </message>
 </context>
 <context>
     <name>Remote::Profiles</name>
@@ -13582,6 +13606,125 @@ Please choose a different name and try again.</source>
     <message>
         <source>New name:</source>
         <translation>Новое имя:</translation>
+    </message>
+</context>
+<context>
+    <name>Remote::SettingsDialog</name>
+    <message>
+        <source>Client settings</source>
+        <translation>Настройки клиента</translation>
+    </message>
+    <message>
+        <source>Interface</source>
+        <translation>Интерфейс</translation>
+    </message>
+    <message>
+        <source>System</source>
+        <translation>Системный</translation>
+    </message>
+    <message>
+        <source>Language:</source>
+        <translation>Язык:</translation>
+    </message>
+    <message>
+        <source>Widget style:</source>
+        <translation>Стиль элементов:</translation>
+    </message>
+    <message>
+        <source>Color scheme:</source>
+        <translation>Цветовая схема:</translation>
+    </message>
+    <message>
+        <source>Light</source>
+        <translation>Светлая</translation>
+    </message>
+    <message>
+        <source>Dark</source>
+        <translation>Тёмная</translation>
+    </message>
+    <message>
+        <source>Custom UI theme (.qbtheme):</source>
+        <translation>Своя тема (.qbtheme):</translation>
+    </message>
+    <message>
+        <source>Leave the theme path empty for the built-in theme. Language and appearance changes take effect after restarting the client.</source>
+        <translation>Оставьте путь пустым для встроенной темы. Язык и оформление изменятся после перезапуска клиента.</translation>
+    </message>
+    <message>
+        <source>Adding torrents</source>
+        <translation>Добавление</translation>
+    </message>
+    <message>
+        <source>Show torrent files and options before adding</source>
+        <translation>Показывать файлы и параметры перед добавлением торрента</translation>
+    </message>
+    <message>
+        <source>Download folders, categories, limits and network settings belong to the server. Open Tools &gt; Server Web UI to change server settings.</source>
+        <translation>Каталоги загрузки, категории, ограничения и сетевые параметры задаются на сервере. Для их изменения откройте «Инструменты → Web UI сервера».</translation>
+    </message>
+    <message>
+        <source>Transfer list</source>
+        <translation>Список торрентов</translation>
+    </message>
+    <message>
+        <source>Double-click a torrent:</source>
+        <translation>Двойной щелчок по торренту:</translation>
+    </message>
+    <message>
+        <source>Do nothing</source>
+        <translation>Ничего не делать</translation>
+    </message>
+    <message>
+        <source>Start / stop</source>
+        <translation>Запустить / остановить</translation>
+    </message>
+    <message>
+        <source>Open destination folder</source>
+        <translation>Открыть папку назначения</translation>
+    </message>
+    <message>
+        <source>Open server Web UI</source>
+        <translation>Открыть Web UI сервера</translation>
+    </message>
+    <message>
+        <source>Alternate row colors</source>
+        <translation>Чередовать цвета строк</translation>
+    </message>
+    <message>
+        <source>Confirm torrent removal</source>
+        <translation>Подтверждать удаление торрентов</translation>
+    </message>
+    <message>
+        <source>Desktop</source>
+        <translation>Рабочий стол</translation>
+    </message>
+    <message>
+        <source>Connect to the last selected profile on startup</source>
+        <translation>Подключать последний выбранный профиль при запуске</translation>
+    </message>
+    <message>
+        <source>Start minimized</source>
+        <translation>Запускать свёрнутым</translation>
+    </message>
+    <message>
+        <source>Keep window on top</source>
+        <translation>Поверх остальных окон</translation>
+    </message>
+    <message>
+        <source>Show icon in the notification area</source>
+        <translation>Показывать значок в области уведомлений</translation>
+    </message>
+    <message>
+        <source>Close window to the notification area</source>
+        <translation>При закрытии окна сворачивать в область уведомлений</translation>
+    </message>
+    <message>
+        <source>Minimize to the notification area</source>
+        <translation>При сворачивании убирать в область уведомлений</translation>
+    </message>
+    <message>
+        <source>Choose an existing .qbtheme file, or clear the theme path.</source>
+        <translation>Выберите существующий файл .qbtheme или очистите путь к теме.</translation>
     </message>
 </context>
 </TS>

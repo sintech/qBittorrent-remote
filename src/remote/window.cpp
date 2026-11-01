@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "window.h"
+#include "settingsdialog.h"
+#include <QSystemTrayIcon>
 #include "gui/addnewtorrentdialog.h"
 #include "gui/trackerentriesdialog.h"
 
@@ -72,23 +74,11 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     profilesAction->setObjectName(u"actionConnectionProfiles"_s);
     m_ui->menuOptions->insertAction(m_ui->actionOptions, profilesAction);
     connect(profilesAction, &QAction::triggered, this, &Window::showProfilesDialog);
-    auto *addOptions = m_ui->menuOptions->addAction(QCoreApplication::translate("OptionsDialog", "Display &torrent content and some options"));
-    addOptions->setObjectName(u"actionShowAddOptions"_s);
-    addOptions->setCheckable(true);
-    addOptions->setChecked(!QSettings().value(u"remote/addDialog/skip"_s, false).toBool());
-    connect(addOptions, &QAction::toggled, this, [](bool checked) { QSettings().setValue(u"remote/addDialog/skip"_s, !checked); });
+    m_webUiAction = m_ui->menuOptions->addAction(UIThemeManager::instance()->getIcon(u"network-server"_s),tr("Server Web UI…"));
+    m_webUiAction->setObjectName(u"actionServerWebUi"_s);
+    connect(m_webUiAction,&QAction::triggered,this,&Window::openServerWebUi);
     m_ui->menuAutoShutdownOnDownloadsCompletion->setEnabled(false);
     m_ui->menuLog->setEnabled(false);
-    auto *languageMenu = m_ui->menuView->addMenu(tr("Language"));
-    for (const auto &language : {u"en"_s, u"ru"_s})
-    {
-        auto *action = languageMenu->addAction(language == u"ru" ? u"Русский"_s : u"English"_s);
-        connect(action, &QAction::triggered, this, [this, language]
-        {
-            QSettings().setValue(u"remote/language"_s, language);
-            QMessageBox::information(this, tr("Language"), u"Restart the application to apply the language.\nПерезапустите приложение для смены языка."_s);
-        });
-    }
 
     m_filter.setSourceModel(&m_model);
     m_filter.setSortRole(Qt::UserRole);
@@ -115,7 +105,7 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
         m_ui->actionAbout, m_ui->actionDocumentation, m_ui->actionTopToolBar,
         m_ui->actionShowStatusbar, m_ui->actionShowFiltersSidebar})
         enableAction(action);
-    connect(m_ui->actionExit, &QAction::triggered, this, &QWidget::close);
+    connect(m_ui->actionExit, &QAction::triggered, this, [this] { m_forceExit = true; close(); QCoreApplication::quit(); });
     connect(m_ui->actionCloseWindow, &QAction::triggered, this, &QWidget::close);
     connect(m_ui->actionAbout, &QAction::triggered, this, [this]
     { QMessageBox::about(this, tr("qBittorrent Remote"), tr("Remote frontend prototype for qBittorrent 5.2.x.\nUses the original qBittorrent window form. GPL v2 or later.")); });
@@ -127,16 +117,8 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     connect(m_ui->actionOpen, &QAction::triggered, this, &Window::addFiles);
     connect(m_ui->actionDownloadFromURL, &QAction::triggered, this, &Window::addLinks);
     connect(m_ui->actionDelete, &QAction::triggered, this, &Window::removeSelected);
-    m_ui->actionOptions->setToolTip(tr("Open server Web UI in the default browser; use its gear icon for settings."));
-    connect(m_ui->actionOptions, &QAction::triggered, this, [this]
-    {
-        if (!m_client.isConnected())
-            return;
-        // The stock Web UI has no standalone settings route. Open its actual
-        // root, retaining the reverse-proxy prefix and the browser's own login.
-        if (!QDesktopServices::openUrl(m_client.serverUrl()))
-            statusBar()->showMessage(tr("Could not open the server Web UI in your browser."), 10000);
-    });
+    m_ui->actionOptions->setToolTip(tr("Client settings"));
+    connect(m_ui->actionOptions,&QAction::triggered,this,&Window::showSettingsDialog);
     const QMap<QAction *, QString> commands {
         {m_ui->actionStart, u"start"_s}, {m_ui->actionStop, u"stop"_s},
         {m_ui->actionTopQueuePos, u"topPrio"_s}, {m_ui->actionIncreaseQueuePos, u"increasePrio"_s},
@@ -190,6 +172,7 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     });
     connect(m_table->selectionModel(), &QItemSelectionModel::selectionChanged, this, [this]
     { updateActions(); refreshDetails(); });
+    connect(m_table,&QTreeView::doubleClicked,this,[this] { torrentDoubleClicked(); });
     m_table->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_table, &QWidget::customContextMenuRequested, this, &Window::showContextMenu);
     connect(m_search, &QLineEdit::textChanged, this, [this] { updateFilters(); });
@@ -214,6 +197,7 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
         m_table->header()->restoreState(header);
     m_vertical->restoreState(settings.value(u"remote/nativeVertical"_s).toByteArray());
     m_horizontal->restoreState(settings.value(u"remote/nativeHorizontal"_s).toByteArray());
+    applyClientSettings();
     updateActions();
     updateFilters();
 }
@@ -227,6 +211,8 @@ Client *Window::client()
 
 void Window::closeEvent(QCloseEvent *event)
 {
+    if (!m_forceExit && m_tray && m_tray->isVisible() && QSettings().value(u"remote/desktop/closeToTray"_s,false).toBool())
+    { event->ignore(); hide(); return; }
     QSettings settings;
     settings.setValue(u"remote/geometry"_s, saveGeometry());
     settings.setValue(u"remote/nativeHeader"_s, m_table->header()->saveState());
@@ -316,6 +302,7 @@ void Window::editProfiles(const bool offerConnection)
 
 void Window::startLastProfile()
 {
+    if (!QSettings().value(u"remote/desktop/autoConnect"_s,true).toBool()) return;
     const QString id = QSettings().value(u"remote/selectedProfile"_s).toString();
     if (!id.isEmpty() && connectProfile(id)) return;
     showConnectionDialog();
@@ -405,7 +392,9 @@ void Window::updateActions()
 {
     const bool connected = m_client.isConnected();
     const bool selected = connected && !selectedHashes().isEmpty();
-    for (auto *action : {m_ui->actionOpen, m_ui->actionDownloadFromURL, m_ui->actionOptions})
+    m_ui->actionOptions->setEnabled(true);
+    m_webUiAction->setEnabled(connected);
+    for (auto *action : {m_ui->actionOpen, m_ui->actionDownloadFromURL})
         action->setEnabled(connected);
     for (auto *action : {m_ui->actionStart, m_ui->actionStop, m_ui->actionDelete,
         m_ui->actionTopQueuePos, m_ui->actionIncreaseQueuePos, m_ui->actionDecreaseQueuePos, m_ui->actionBottomQueuePos})
@@ -473,12 +462,16 @@ void Window::removeSelected()
         return;
     const auto selected = m_table->selectionModel()->selectedRows();
     const QString name = selected.size() == 1 ? selected.first().siblingAtColumn(1).data().toString() : QString();
-    DeletionConfirmationDialog dialog(this, hashes.size(), name, false);
-    if (dialog.exec() != QDialog::Accepted)
-        return;
+    bool deleteFiles = false;
+    if (QSettings().value(u"remote/list/confirmRemoval"_s,true).toBool())
+    {
+        DeletionConfirmationDialog dialog(this, hashes.size(), name, false);
+        if (dialog.exec() != QDialog::Accepted) return;
+        deleteFiles = dialog.isRemoveContentSelected();
+    }
     QUrlQuery form;
     form.addQueryItem(u"hashes"_s, hashes.join(u'|'));
-    form.addQueryItem(u"deleteFiles"_s, dialog.isRemoveContentSelected() ? u"true"_s : u"false"_s);
+    form.addQueryItem(u"deleteFiles"_s, deleteFiles ? u"true"_s : u"false"_s);
     m_client.command(u"torrents/delete"_s, form);
 }
 
@@ -515,7 +508,6 @@ void Window::showAddDialog(const QString &source, bool file)
         connect(dialog, &QDialog::accepted, this, [this, dialog, source, file, server]
         {
             if (!m_client.isConnected() || server != m_client.serverUrl()) return;
-            if (auto *action = findChild<QAction *>(u"actionShowAddOptions"_s)) action->setChecked(!QSettings().value(u"remote/addDialog/skip"_s, false).toBool());
             auto form = dialog->parameters();
             if (file) m_client.addTorrentFile(source, form, dialog->torrentHash(), dialog->filePriorities());
             else { form.addQueryItem(u"urls"_s, source); m_client.command(u"torrents/add"_s, form); }

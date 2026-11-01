@@ -38,6 +38,7 @@
 #include <QFile>
 #include <QDir>
 #include "profiles.h"
+#include "settingsdialog.h"
 #include "profileeditor.h"
 #include "gui/transferlistwidget.h"
 #include "gui/transferlistdelegate.h"
@@ -596,12 +597,12 @@ private slots:
         QVERIFY(removal.isRemoveContentSelected());
     }
 
-    void optionsOpensCurrentServerWebUiWithoutCredentials()
+    void toolsOpensCurrentServerWebUiWithoutCredentials()
     {
         BrowserCapture browser;
         Network network;
         Window window(nullptr, &network);
-        auto *options = window.findChild<QAction *>(u"actionOptions"_s);
+        auto *options = window.findChild<QAction *>(u"actionServerWebUi"_s);
         QVERIFY(options);
         QVERIFY(!options->isEnabled());
         auto first = keyConnection();
@@ -1046,6 +1047,57 @@ private slots:
         client.addTorrentFile(file.fileName(),form,u"def"_s,{{0,{u"1"_s}}});
         QTRY_COMPARE(errors.size(),1);
         QVERIFY(std::none_of(network.sent.cbegin(),network.sent.cend(),[](const auto &sent){return sent.request.url().path().endsWith(u"torrents/start");}));
+    }
+
+
+    void clientSettingsSaveLocallyAndCancelDiscardsDrafts()
+    {
+        BrowserCapture browser; Network network; Window window(nullptr,&network);
+        auto *options = window.findChild<QAction *>(u"actionOptions"_s); QVERIFY(options); QVERIFY(options->isEnabled());
+        QVERIFY(!window.findChild<QAction *>(u"actionShowAddOptions"_s));
+        options->trigger();
+        auto *dialog = window.findChild<SettingsDialog *>(); QVERIFY(dialog);
+        auto *adding = dialog->findChild<QCheckBox *>(u"remote/addDialog/skip"_s); QVERIFY(adding); QVERIFY(adding->isChecked());
+        adding->setChecked(false); dialog->reject(); QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+        QVERIFY(!QSettings().value(u"remote/addDialog/skip"_s,false).toBool());
+        options->trigger(); dialog=window.findChild<SettingsDialog *>(); QVERIFY(dialog);
+        dialog->findChild<QCheckBox *>(u"remote/addDialog/skip"_s)->setChecked(false);
+        dialog->findChild<QCheckBox *>(u"remote/list/alternateRows"_s)->setChecked(true);
+        auto *language=dialog->findChild<QComboBox *>(u"remote/language"_s); language->setCurrentIndex(language->findData(u"ru"_s));
+        const auto screenshot=qEnvironmentVariable("REMOTE_SCREENSHOT_PATH");if(!screenshot.isEmpty()) QVERIFY(dialog->grab().save(screenshot+u".settings.png"));
+        dialog->accept();
+        QVERIFY(QSettings().value(u"remote/addDialog/skip"_s).toBool()); QCOMPARE(QSettings().value(u"remote/language"_s).toString(),u"ru"_s);
+        QVERIFY(dialog->restartRequired()); QVERIFY(window.findChild<QTreeView *>(u"remoteTorrentTable"_s)->alternatingRowColors());
+        QVERIFY(browser.urls.isEmpty()); QVERIFY(network.sent.isEmpty());
+        AddNewTorrentDialog add(u"magnet:?xt=urn:btih:abc"_s,{},{});
+        QVERIFY(add.findChild<QCheckBox *>(u"checkBoxNeverShow"_s)->isHidden());
+        add.accept(); QVERIFY(QSettings().value(u"remote/addDialog/skip"_s).toBool());
+    }
+
+    void startupAutoConnectionCanBeDisabled()
+    {
+        QSettings().setValue(u"remote/desktop/autoConnect"_s,false);
+        Network network; Window window(nullptr,&network); window.startLastProfile();
+        QVERIFY(!window.client()->isConnected()); QVERIFY(network.sent.isEmpty());
+        QVERIFY(!window.findChild<ProfileEditor *>());
+    }
+
+    void transferListSettingsControlDoubleClickAndSafeRemoval()
+    {
+        QSettings().setValue(u"remote/list/doubleClick"_s,u"toggle"_s);
+        QSettings().setValue(u"remote/list/confirmRemoval"_s,false);
+        Network network;
+        network.snapshot=R"({"rid":1,"full_update":true,"torrents":{"abc":{"name":"Example","progress":0.5,"state":"downloading"}}})";
+        Window window(nullptr,&network);window.client()->connectToServer(keyConnection());QTRY_VERIFY(window.client()->isConnected());
+        auto *tree=window.findChild<QTreeView *>(u"remoteTorrentTable"_s);
+        QTRY_COMPARE(tree->model()->rowCount(),1);
+        const auto index=tree->model()->index(0,0);tree->selectionModel()->select(index,QItemSelectionModel::Select|QItemSelectionModel::Rows);
+        QVERIFY(QMetaObject::invokeMethod(tree,"doubleClicked",Q_ARG(QModelIndex,index)));
+        QTRY_VERIFY(std::any_of(network.sent.cbegin(),network.sent.cend(),[](const auto &sent){return sent.request.url().path().endsWith(u"torrents/stop");}));
+        window.findChild<QAction *>(u"actionDelete"_s)->trigger();
+        QTRY_VERIFY(std::any_of(network.sent.cbegin(),network.sent.cend(),[](const auto &sent){return sent.request.url().path().endsWith(u"torrents/delete");}));
+        for(const auto &sent:network.sent) if(sent.request.url().path().endsWith(u"torrents/delete"))
+        { const QUrlQuery query(QString::fromUtf8(sent.body));QCOMPARE(query.queryItemValue(u"deleteFiles"_s),u"false"_s); }
     }
 
     void nativeWindowStartsDisconnected()

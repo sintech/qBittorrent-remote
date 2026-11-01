@@ -85,7 +85,7 @@ disconnects it. Files are accessed through the local filesystem/share.
   Free-space display follows the original default (hidden).
 - Russian localization reuses the upstream catalog when Qt LinguistTools is
   installed (included by the Windows workflow). The system language is used by
-  default; View > Language selects English/Russian for the next launch.
+  default; Options > Interface selects System/English/Russian for the next launch.
 - All 38 upstream torrent-list columns, populated from Web API data when present.
 - Incremental `/sync/maindata` polling, preserving existing row indexes and
   selections; full snapshots remove obsolete fields and rows on reconnect.
@@ -105,7 +105,8 @@ disconnects it. Files are accessed through the local filesystem/share.
   Such uploads remain stopped until all priority updates succeed, then start only
   if requested. A failed update leaves the torrent stopped without replaying writes.
   Magnet/HTTP URL metadata is obtained by the server after acceptance.
-  Tools can re-enable the dialog after selecting its “never show” checkbox.
+  Options > Adding torrents controls whether this dialog is shown. There is no
+  menu checkbox or “never show again” checkbox in the addition dialog.
 - Remove torrents; server content deletion is unchecked by default and requires
   the original `DeletionConfirmationDialog`.
 - Original General property layout with the actual upstream downloaded-pieces
@@ -124,11 +125,20 @@ disconnects it. Files are accessed through the local filesystem/share.
   at connection and survives torrent selection. The API exposes payload upload/
   download rates; unavailable overhead/DHT/tracker series are disabled. Switching
   servers clears history.
-- Options (toolbar/menu/Alt+O) opens the connected server's Web UI in the
+- Tools > Server Web UI opens the connected server's Web UI in the
   default browser, preserving any reverse-proxy prefix. Use the gear icon there
   for server settings: the stock 5.2.4 Web UI has no standalone settings URL.
   The browser uses its own login/session; client passwords, API keys and cookies
   are not passed in the URL. The action is disabled until connected.
+- Options (toolbar/menu/Alt+O) opens client-local settings, available offline:
+  Interface (language, Qt widget style, system/light/dark palette on Qt 6.8+,
+  optional .qbtheme), Adding torrents, Transfer list (double-click action,
+  alternating rows, removal confirmation) and Desktop (last-profile auto-connect,
+  minimized startup, always-on-top and notification-area behavior).
+  Appearance/language changes require a restart; behavior changes apply on Save.
+  Cancel discards drafts. Closing to the notification area requires an available,
+  visible tray icon; Exit always exits. Disabling removal confirmation never
+  deletes the downloaded server files.
 - Column widths, order, sorting and visible-column choices persist for the main
   table and property tables. The internal peers IP column is never exposed,
   including when restoring older settings. Content widths survive torrent changes.
@@ -147,22 +157,22 @@ disconnects it. Files are accessed through the local filesystem/share.
 UI policy: reuse the canonical widgets and their shared initialization in
 `src/gui`. Do not add remote copies of forms, painters, style sheets, sizing rules
 or visual widget implementations. `src/remote` is the API/data/command adapter;
-its connection dialog is a remote-specific addition with no local equivalent.
+its profile editor and client-only settings dialog are remote-specific additions.
 Native session-controller sections are excluded from the API-only target; shared
 view code is still compiled from the same source files. The local torrent engine
 is never instantiated. Full functionality parity is not claimed.
 
-Settings, RSS, search plugins, torrent creation, session pause, statistics and
-tray integration remain unported. Torrent options opens the server Web UI.
+Server settings, RSS, search plugins, torrent creation, session pause and statistics
+remain unported. Torrent options opens the server Web UI.
 Renaming files before adding a torrent and fetching magnet metadata before
 acceptance are unavailable. Rename and priority commands are available in
 Content after addition; tracker tier reordering and server-directory browsing
 are not exposed by this adapter. Connect to Server is in the File menu;
-the original Options action opens server settings via the browser Web UI.
+Tools > Server Web UI opens server settings via the browser Web UI.
 The remote profile does not import the local client's appearance preferences.
 The original theme loader is available through the separate remote profile
-(`remote/theme` for a qbtheme path, `remote/style` for a Qt style); an appearance
-settings UI is still unported. New remote-specific prompts include Russian translations.
+(`remote/theme` for a qbtheme path, `remote/style` for a Qt style) and through
+Options > Interface. New remote-specific prompts include Russian translations.
 Mapped local opening is supported; server directory browsing and file transfer
 through the Web API remain unported.
 No remote server shutdown command is sent when closing the client.

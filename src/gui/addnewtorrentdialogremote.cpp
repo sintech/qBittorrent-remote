@@ -166,7 +166,7 @@ AddNewTorrentDialog::AddNewTorrentDialog(const QString &source, const QJsonObjec
         for (int column = 0; column < m_ui->contentTreeView->model()->columnCount(); ++column)
             m_ui->contentTreeView->setColumnWidth(column, m_ui->contentTreeView->header()->defaultSectionSize());
     m_ui->contentTreeView->setHeaderSettingsKey(u"remote/addContentHeader"_s);
-    m_ui->checkBoxNeverShow->setChecked(settings.value(u"remote/addDialog/skip", false).toBool());
+    m_ui->checkBoxNeverShow->hide();
     auto *filter = new LineEdit(this);
     filter->setPlaceholderText(tr("Filter files..."));
     m_ui->contentFilterLayout->insertWidget(0, filter);
@@ -180,7 +180,6 @@ AddNewTorrentDialog::AddNewTorrentDialog(const QString &source, const QJsonObjec
         if (m_ui->checkBoxRememberLastSavePath->isChecked()) settings.setValue(historyKey + u"/savePath", m_ui->savePath->pathText());
         else settings.remove(historyKey + u"/savePath");
         if (m_ui->defaultCategoryCheckbox->isChecked()) settings.setValue(historyKey + u"/category", m_ui->categoryComboBox->currentText());
-        settings.setValue(u"remote/addDialog/skip", m_ui->checkBoxNeverShow->isChecked());
     });
     resize(settings.value(u"remote/addDialog/size", size()).toSize());
 }
