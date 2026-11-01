@@ -9,6 +9,8 @@
 #include <QNetworkCookieJar>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QVersionNumber>
+#include <QRegularExpression>
 
 using namespace Qt::StringLiterals;
 using namespace Remote;
@@ -57,6 +59,8 @@ void Client::disconnectFromServer()
     m_network->setCookieJar(new QNetworkCookieJar(m_network));
     m_network->clearAccessCache();
     m_connection = {};
+    m_serverVersion.clear();
+    m_webApiVersion.clear();
     setConnected(false);
     emit reset();
 }
@@ -157,7 +161,7 @@ void Client::request(const QString &method, const QUrlQuery &parameters, const b
                 setConnected(false);
             }
             else if ((status == 401) || (status == 403) || (status == 0)
-                || (method == u"sync/maindata") || (method == u"app/version"))
+                || (method == u"sync/maindata") || (method == u"app/version") || (method == u"app/webapiVersion"))
             {
                 invalidateRequests();
                 m_authenticated = false;
@@ -177,15 +181,20 @@ void Client::authenticate()
     {
         request(u"app/version"_s, {}, false, [this](const QByteArray &version)
         {
-            if (!version.startsWith("v5.2."))
+            m_serverVersion = QString::fromUtf8(version).trimmed();
+            request(u"app/webapiVersion"_s, {}, false, [this](const QByteArray &apiVersion)
             {
-                m_running = false;
-                emit errorOccurred(tr("This prototype requires qBittorrent 5.2.x."));
-                return;
-            }
-            m_authenticated = true;
-            m_revision = 0;
-            poll();
+                m_webApiVersion = QString::fromUtf8(apiVersion).trimmed();
+                if (!supportsVersions(m_serverVersion, m_webApiVersion))
+                {
+                    m_running = false;
+                    emit errorOccurred(tr("Unsupported server/API combination: %1 / %2. Requires qBittorrent 5.2.x or 5.3.x with Web API 2.15.1 or later in the 2.x family.").arg(m_serverVersion,m_webApiVersion));
+                    return;
+                }
+                m_authenticated = true;
+                m_revision = 0;
+                poll();
+            });
         });
     };
     if (!m_connection.apiKey.isEmpty())
@@ -344,4 +353,19 @@ void Client::applyFilePriorities(const QString &hash, QMap<int, QStringList> pri
     priorities.remove(first.key());
     request(u"torrents/filePrio"_s, form, true, [this, hash, priorities, start](const QByteArray &)
     { applyFilePriorities(hash, priorities, start); }, true);
+}
+
+
+bool Client::supportsVersions(const QString &serverVersion, const QString &webApiVersion)
+{
+    static const QRegularExpression serverPattern(u"^v?5\\.(2|3)\\.[0-9]+(?:[-+].*)?$"_s);
+    static const QRegularExpression apiPattern(u"^2\\.[0-9]+(?:\\.[0-9]+)?$"_s);
+    return serverPattern.match(serverVersion).hasMatch()
+        && apiPattern.match(webApiVersion).hasMatch()
+        && QVersionNumber::fromString(webApiVersion) >= QVersionNumber(2,15,1);
+}
+
+void Client::post(const QString &method, const QUrlQuery &parameters, Callback callback)
+{
+    if (m_connected) request(method, parameters, true, std::move(callback), true);
 }

@@ -82,7 +82,7 @@ namespace Remote
         void removeSelected();
         void addFiles();
         void addLinks();
-        void showAddDialog(const QString &source, bool file);
+        void showAddDialog(const QString &source, bool file, bool forceDialog = false);
         void editTrackers(const QStringList &hashes);
         void sidebarCommand(const QString &kind, const QString &operation, const QString &value);
         void showContextMenu(const QPoint &position);
@@ -94,6 +94,10 @@ namespace Remote
         Profile m_activeProfile;
         QSystemTrayIcon *m_tray = nullptr;
         QAction *m_webUiAction = nullptr;
+        QTabWidget *m_tabs = nullptr;
+        SearchWidget *m_searchPanel = nullptr;
+        ExecutionLogWidget *m_logPanel = nullptr;
+        QAction *m_transferFilterAction = nullptr;
         bool m_forceExit = false;
         bool m_geometryReady = false;
         bool m_restoringWindow = false;
@@ -102,6 +106,7 @@ namespace Remote
         Qt::WindowStates m_restoreWindowState = Qt::WindowNoState;
         QTimer m_geometrySaveTimer;
         QStringList m_pendingSources;
+        QSet<QString> m_forceDialogSources;
         QPointer<AddNewTorrentDialog> m_addDialog;
         bool m_openingSource = false;
         bool m_sourceConnectionRequested = false;

@@ -101,3 +101,15 @@ void ExecutionLogWidget::displayContextMenu(const LogListView *view, const BaseL
 
     menu->popup(QCursor::pos());
 }
+
+#ifdef QBT_REMOTE_CLIENT
+void ExecutionLogWidget::appendRemoteMessage(const Log::Msg &message)
+{ findChild<LogMessageModel *>()->handleNewMessage(message); }
+void ExecutionLogWidget::appendRemotePeer(const Log::Peer &peer)
+{ findChild<LogPeerModel *>()->handleNewMessage(peer); }
+void ExecutionLogWidget::clearRemote()
+{
+    findChild<LogMessageModel *>()->reset();
+    findChild<LogPeerModel *>()->reset();
+}
+#endif

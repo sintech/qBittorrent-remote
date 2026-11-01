@@ -36,6 +36,11 @@
 #include <QToolBar>
 
 #include "ui_mainwindow.h"
+#include "gui/search/searchwidget.h"
+#include "gui/executionlogwidget.h"
+#include "logcontroller.h"
+#include <QTabWidget>
+#include <QShortcut>
 #include "properties.h"
 #include "sidebar.h"
 #include "profileeditor.h"
@@ -79,7 +84,7 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     m_webUiAction->setObjectName(u"actionServerWebUi"_s);
     connect(m_webUiAction,&QAction::triggered,this,&Window::openServerWebUi);
     m_ui->menuAutoShutdownOnDownloadsCompletion->setEnabled(false);
-    m_ui->menuLog->setEnabled(false);
+    m_ui->menuLog->setEnabled(true);
 
     m_filter.setSourceModel(&m_model);
     m_filter.setSortRole(Qt::UserRole);
@@ -91,13 +96,75 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     m_table->sortByColumn(1, Qt::AscendingOrder);
     m_properties = new Properties(this);
     const auto view = setupTransferView(m_table, m_properties);
+    m_tabs = view.tabs;
+    m_tabs->setObjectName(u"remoteMainTabs"_s);
+    m_transferFilterAction = view.filterAction;
     m_horizontal = view.horizontal;
     m_vertical = view.vertical;
     m_search = view.filter;
+    m_search->setObjectName(u"remoteTransferFilter"_s);
     m_filterColumn = view.filterColumn;
     m_sidebar = new Sidebar(m_horizontal);
     m_horizontal->insertWidget(0, m_sidebar);
     m_horizontal->setStretchFactor(1, 1);
+
+    m_searchPanel = new SearchWidget(&m_client,m_tabs);
+    m_logPanel = new ExecutionLogWidget(Log::MsgType::ALL,m_tabs);
+    auto *logs = new LogController(&m_client,m_logPanel);
+    const auto showSearch = [this](bool show)
+    {
+        if(show && m_tabs->indexOf(m_searchPanel)<0) m_tabs->insertTab(1,m_searchPanel,UIThemeManager::instance()->getIcon(u"edit-find"_s),tr("Search"));
+        if(!show) { m_tabs->removeTab(m_tabs->indexOf(m_searchPanel));m_searchPanel->hide(); }
+        QSettings().setValue(u"remote/search/visible"_s,show);
+    };
+    const auto showLogs = [this](bool show)
+    {
+        if(show && m_tabs->indexOf(m_logPanel)<0) m_tabs->addTab(m_logPanel,UIThemeManager::instance()->getIcon(u"help-contents"_s),tr("Execution Log"));
+        if(!show) { m_tabs->removeTab(m_tabs->indexOf(m_logPanel));m_logPanel->hide(); }
+        QSettings().setValue(u"remote/log/visible"_s,show);
+    };
+    m_ui->actionSearchWidget->setEnabled(true);m_ui->actionExecutionLogs->setEnabled(true);
+    connect(m_ui->actionSearchWidget,&QAction::toggled,this,showSearch);
+    connect(m_ui->actionExecutionLogs,&QAction::toggled,this,showLogs);
+    const bool searchVisible=QSettings().value(u"remote/search/visible"_s,true).toBool();
+    const bool logVisible=QSettings().value(u"remote/log/visible"_s,true).toBool();
+    m_ui->actionSearchWidget->setChecked(searchVisible);showSearch(searchVisible);
+    m_ui->actionExecutionLogs->setChecked(logVisible);showLogs(logVisible);
+    const auto updateLogTypes=[this]
+    {
+        Log::MsgTypes types;
+        if(m_ui->actionNormalMessages->isChecked()) types|=Log::NORMAL;
+        if(m_ui->actionInformationMessages->isChecked()) types|=Log::INFO;
+        if(m_ui->actionWarningMessages->isChecked()) types|=Log::WARNING;
+        if(m_ui->actionCriticalMessages->isChecked()) types|=Log::CRITICAL;
+        m_logPanel->setMessageTypes(types);QSettings().setValue(u"remote/log/types"_s,int(types));
+    };
+    const int types=QSettings().value(u"remote/log/types"_s,15).toInt();
+    for(const auto &[action,type]:QList<QPair<QAction *,int>>{{m_ui->actionNormalMessages,1},{m_ui->actionInformationMessages,2},{m_ui->actionWarningMessages,4},{m_ui->actionCriticalMessages,8}})
+    { action->setEnabled(true);action->setChecked(types&type);connect(action,&QAction::toggled,this,updateLogTypes); }
+    updateLogTypes();
+    connect(m_tabs,&QTabWidget::currentChanged,this,[this,logs]
+    {
+        const bool transfers=m_tabs->currentIndex()==0;
+        m_transferFilterAction->setVisible(transfers);
+        if(m_tabs->currentWidget()==m_searchPanel) m_searchPanel->giveFocusToSearchInput();
+        if(m_tabs->currentWidget()==m_logPanel) QTimer::singleShot(0,logs,&LogController::refresh);
+        updateActions();
+    });
+    auto *transfersShortcut=new QShortcut(Qt::ALT|Qt::Key_1,this);
+    connect(transfersShortcut,&QShortcut::activated,this,[this] { m_tabs->setCurrentIndex(0); });
+    auto *searchShortcut=new QShortcut(Qt::ALT|Qt::Key_2,this);
+    connect(searchShortcut,&QShortcut::activated,this,[this] { m_ui->actionSearchWidget->setChecked(true);m_tabs->setCurrentWidget(m_searchPanel); });
+    auto *logShortcut=new QShortcut(Qt::ALT|Qt::Key_4,this);
+    connect(logShortcut,&QShortcut::activated,this,[this] { m_ui->actionExecutionLogs->setChecked(true);m_tabs->setCurrentWidget(m_logPanel); });
+    connect(m_searchPanel,&SearchWidget::sourceRequested,this,[this](const QString &source,AddTorrentOption option)
+    {
+        if(!m_client.isConnected()) return;
+        if(option==AddTorrentOption::SkipDialog)
+        { QUrlQuery q;q.addQueryItem(u"urls"_s,QString(source).replace(u'%',u"%25"_s));m_client.command(u"torrents/add"_s,q); }
+        else if(option==AddTorrentOption::ShowDialog) { for(const auto &normalized:normalizeSources({source},QDir::currentPath()).values) m_forceDialogSources.insert(normalized);openSources({source}); }
+        else openSources({source});
+    });
 
     m_nativeStatus = new StatusBar(this);
     setStatusBar(m_nativeStatus);
@@ -110,7 +177,7 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     connect(m_ui->actionExit, &QAction::triggered, this, [this] { m_forceExit = true; close(); QCoreApplication::quit(); });
     connect(m_ui->actionCloseWindow, &QAction::triggered, this, &QWidget::close);
     connect(m_ui->actionAbout, &QAction::triggered, this, [this]
-    { QMessageBox::about(this, tr("qBittorrent Remote"), tr("Remote frontend prototype for qBittorrent 5.2.x.\nUses the original qBittorrent window form. GPL v2 or later.")); });
+    { QMessageBox::about(this, tr("qBittorrent Remote"), tr("Remote frontend for qBittorrent 5.2.x / 5.3.x.\nUses the original qBittorrent window form. GPL v2 or later.")); });
     connect(m_ui->actionDocumentation, &QAction::triggered, this, []
     { QDesktopServices::openUrl(QUrl(u"https://github.com/sintech/qBittorrent-remote/blob/feature/remote-api-5.2.4/doc/remote-client.md"_s)); });
     connect(m_ui->actionTopToolBar, &QAction::toggled, m_ui->toolBar, &QWidget::setVisible);
@@ -410,7 +477,7 @@ QStringList Window::selectedHashes() const
 void Window::updateActions()
 {
     const bool connected = m_client.isConnected();
-    const bool selected = connected && !selectedHashes().isEmpty();
+    const bool selected = connected && (!m_tabs || m_tabs->currentIndex()==0) && !selectedHashes().isEmpty();
     m_ui->actionOptions->setEnabled(true);
     m_webUiAction->setEnabled(connected);
     for (auto *action : {m_ui->actionOpen, m_ui->actionDownloadFromURL})
@@ -512,10 +579,10 @@ void Window::addLinks()
     dialog.exec();
 }
 
-void Window::showAddDialog(const QString &source, bool file)
+void Window::showAddDialog(const QString &source, bool file, bool forceDialog)
 {
     const auto server = m_client.serverUrl();
-    m_client.get(u"app/preferences"_s, {}, [this, source, file, server](const QByteArray &body)
+    m_client.get(u"app/preferences"_s, {}, [this, source, file, server, forceDialog](const QByteArray &body)
     {
         if (server != m_client.serverUrl()) return;
         m_openingSource = false;
@@ -528,8 +595,9 @@ void Window::showAddDialog(const QString &source, bool file)
         m_addDialog=dialog;
         dialog->setProperty("activationSource",source);
         dialog->setAttribute(Qt::WA_DeleteOnClose);
-        connect(dialog,&QDialog::finished,this,[this]
+        connect(dialog,&QDialog::finished,this,[this,source]
         {
+            m_forceDialogSources.remove(source);
             m_addDialog=nullptr;
             QTimer::singleShot(0,this,&Window::processPendingSources);
         });
@@ -541,7 +609,7 @@ void Window::showAddDialog(const QString &source, bool file)
             if (file) m_client.addTorrentFile(source, form, dialog->torrentHash(), dialog->filePriorities());
             else { form.addQueryItem(u"urls"_s, QString(source).replace(u'%',u"%25"_s)); m_client.command(u"torrents/add"_s, form); }
         });
-        if ((!file || !dialog->torrentHash().isEmpty()) && QSettings().value(u"remote/addDialog/skip"_s, false).toBool())
+        if (!forceDialog && (!file || !dialog->torrentHash().isEmpty()) && QSettings().value(u"remote/addDialog/skip"_s, false).toBool())
             QTimer::singleShot(0, dialog, &QDialog::accept);
         else dialog->open();
     });

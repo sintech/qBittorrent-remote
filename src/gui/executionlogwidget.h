@@ -51,6 +51,11 @@ public:
     ~ExecutionLogWidget();
 
     void setMessageTypes(Log::MsgTypes types);
+#ifdef QBT_REMOTE_CLIENT
+    void appendRemoteMessage(const Log::Msg &message);
+    void appendRemotePeer(const Log::Peer &peer);
+    void clearRemote();
+#endif
 
 private:
     void displayContextMenu(const LogListView *view, const BaseLogModel *model) const;

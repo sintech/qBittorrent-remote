@@ -47,7 +47,7 @@ void Window::processPendingSources()
         QTimer::singleShot(0,this,&Window::processPendingSources);return;
     }
     m_openingSource=true;
-    showAddDialog(source,file);
+    showAddDialog(source,file,m_forceDialogSources.contains(source));
 }
 void Window::dragEnterEvent(QDragEnterEvent *event)
 {

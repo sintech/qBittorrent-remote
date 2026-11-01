@@ -36,12 +36,13 @@
 #include <QKeyEvent>
 #include <QPainter>
 #include <QStyle>
+#include <QSettings>
 #include <QStyledItemDelegate>
 
 #include "base/global.h"
 #include "logmodel.h"
 
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN) && !defined(QBT_REMOTE_CLIENT)
 #include "base/preferences.h"
 #endif
 
@@ -67,7 +68,11 @@ namespace
         explicit LogItemDelegate(QObject *parent = nullptr)
             : QStyledItemDelegate(parent)
 #ifdef Q_OS_WIN
+#ifdef QBT_REMOTE_CLIENT
+            , m_useCustomUITheme(!QSettings().value(QStringLiteral("remote/theme")).toString().isEmpty())
+#else
             , m_useCustomUITheme(Preferences::instance()->useCustomUITheme())
+#endif
 #endif
         {
         }

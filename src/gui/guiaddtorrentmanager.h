@@ -47,12 +47,7 @@ namespace Net
 
 class AddNewTorrentDialog;
 
-enum class AddTorrentOption
-{
-    Default,
-    ShowDialog,
-    SkipDialog,
-};
+#include "addtorrentoption.h"
 
 class GUIAddTorrentManager final : public GUIApplicationComponent<AddTorrentManager>
 {

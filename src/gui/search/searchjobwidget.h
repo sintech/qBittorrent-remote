@@ -32,7 +32,7 @@
 #include <QWidget>
 
 #include "base/settingvalue.h"
-#include "gui/guiaddtorrentmanager.h"
+#include "gui/addtorrentoption.h"
 #include "gui/guiapplicationcomponent.h"
 
 #define ENGINE_URL_COLUMN 4
@@ -91,7 +91,14 @@ public:
     void assignSearchHandler(SearchHandler *searchHandler);
     void cancelSearch();
 
+#ifdef QBT_REMOTE_CLIENT
+    void appendRemoteResults(const QList<SearchResult> &results) { appendSearchResults(results); }
+    void setRemoteStatus(Status value) { setStatus(value); }
 signals:
+    void remoteDownloadRequested(const QString &url, const QString &engine, AddTorrentOption option);
+#else
+signals:
+#endif
     void resultsCountUpdated();
     void statusChanged();
 

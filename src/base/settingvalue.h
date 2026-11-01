@@ -30,7 +30,13 @@
 
 #include <QString>
 
+#ifdef QBT_REMOTE_CLIENT
+#include <QSettings>
+#include <QVariant>
+#include <type_traits>
+#else
 #include "settingsstorage.h"
+#endif
 
 // This is a thin/handy wrapper over `SettingsStorage`. Use it when store/load value
 // rarely occurs, otherwise use `CachedSettingValue`.
@@ -45,7 +51,14 @@ public:
 
     T get(const T &defaultValue = {}) const
     {
+#ifdef QBT_REMOTE_CLIENT
+        if constexpr (std::is_enum_v<T>)
+            return static_cast<T>(QSettings().value(m_keyName,static_cast<int>(defaultValue)).toInt());
+        else
+            return QSettings().value(m_keyName,QVariant::fromValue(defaultValue)).template value<T>();
+#else
         return SettingsStorage::instance()->loadValue(m_keyName, defaultValue);
+#endif
     }
 
     operator T() const
@@ -55,7 +68,12 @@ public:
 
     SettingValue<T> &operator=(const T &value)
     {
+#ifdef QBT_REMOTE_CLIENT
+        if constexpr (std::is_enum_v<T>) QSettings().setValue(m_keyName,static_cast<int>(value));
+        else QSettings().setValue(m_keyName,QVariant::fromValue(value));
+#else
         SettingsStorage::instance()->storeValue(m_keyName, value);
+#endif
         return *this;
     }
 

@@ -63,7 +63,9 @@ Log::MsgType BaseLogModel::Message::type() const
 
 BaseLogModel::BaseLogModel(QObject *parent)
     : QAbstractListModel(parent)
+#ifndef QBT_REMOTE_CLIENT
     , m_messages(MAX_VISIBLE_MESSAGES)
+#endif
 {
     loadColors();
     connect(UIThemeManager::instance(), &UIThemeManager::themeChanged, this, &BaseLogModel::onUIThemeChanged);
@@ -147,9 +149,11 @@ LogMessageModel::LogMessageModel(QObject *parent)
 {
     loadColors();
 
+#ifndef QBT_REMOTE_CLIENT
     for (const Log::Msg &msg : asConst(Logger::instance()->getMessages()))
         handleNewMessage(msg);
     connect(Logger::instance(), &Logger::newLogMessage, this, &LogMessageModel::handleNewMessage);
+#endif
 }
 
 void LogMessageModel::handleNewMessage(const Log::Msg &message)
@@ -187,9 +191,11 @@ LogPeerModel::LogPeerModel(QObject *parent)
 {
     loadColors();
 
+#ifndef QBT_REMOTE_CLIENT
     for (const Log::Peer &peer : asConst(Logger::instance()->getPeers()))
         handleNewMessage(peer);
     connect(Logger::instance(), &Logger::newLogPeer, this, &LogPeerModel::handleNewMessage);
+#endif
 }
 
 void LogPeerModel::handleNewMessage(const Log::Peer &peer)

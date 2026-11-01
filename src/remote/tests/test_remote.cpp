@@ -66,6 +66,14 @@
 #include "gui/deletionconfirmationdialog.h"
 #include <QSettings>
 
+#include "gui/search/searchwidget.h"
+#include "gui/search/searchjobwidget.h"
+#include "gui/search/searchsortmodel.h"
+#include "gui/executionlogwidget.h"
+#include "gui/log/logmodel.h"
+#include "gui/log/logfiltermodel.h"
+#include "base/search/searchhandler.h"
+#include "logcontroller.h"
 #include "client.h"
 #include "properties.h"
 #include "gui/propertylistviews.h"
@@ -150,6 +158,7 @@ namespace
             const QString path = request.url().path();
             const auto response = responses.value(path,
                 path.endsWith(u"app/version") ? Response {"v5.2.4"}
+                : path.endsWith(u"app/webapiVersion") ? Response {"2.15.1"}
                 : path.endsWith(u"auth/login") ? Response {"Ok."}
                 : path.endsWith(u"sync/maindata") ? Response {snapshot}
                 : Response {""});
@@ -243,7 +252,8 @@ private slots:
         QCOMPARE(network.sent[0].request.rawHeader("Authorization"), QByteArray("Bearer test-key"));
         QCOMPARE(network.sent[0].request.attribute(QNetworkRequest::RedirectPolicyAttribute).toInt(),
             int(QNetworkRequest::ManualRedirectPolicy));
-        QCOMPARE(network.sent[1].request.url().query(), u"rid=0"_s);
+        QCOMPARE(network.sent[1].request.url().path(), u"/qbt/api/v2/app/webapiVersion"_s);
+        QCOMPARE(network.sent[2].request.url().query(), u"rid=0"_s);
         client.disconnectFromServer();
         QVERIFY(!client.isConnected());
     }
@@ -1301,6 +1311,106 @@ private slots:
         // Qt may move a newly created window to fit the virtual screen when
         // the initial toolbar minimum exceeds the headless screen width.
         QVERIFY(!before.isEmpty());
+    }
+
+    void apiCompatibilityMatrix_data()
+    {
+        QTest::addColumn<QString>("server");QTest::addColumn<QString>("api");QTest::addColumn<bool>("supported");
+        QTest::newRow("5.2.0")<<u"v5.2.0"_s<<u"2.15.1"_s<<true;
+        QTest::newRow("5.2.4")<<u"v5.2.4"_s<<u"2.15.1"_s<<true;
+        QTest::newRow("5.3.0")<<u"v5.3.0"_s<<u"2.16.2"_s<<true;
+        QTest::newRow("5.3.patch")<<u"5.3.12"_s<<u"2.16.3"_s<<true;
+        QTest::newRow("old-server")<<u"v4.6.0"_s<<u"2.15.1"_s<<false;
+        QTest::newRow("new-major-api")<<u"v5.3.0"_s<<u"3.0.0"_s<<false;
+        QTest::newRow("old-api")<<u"v5.2.4"_s<<u"2.11.0"_s<<false;
+        QTest::newRow("malformed")<<u"v5.3.0"_s<<u"bad"_s<<false;
+    }
+    void apiCompatibilityMatrix()
+    {
+        QFETCH(QString,server);QFETCH(QString,api);QFETCH(bool,supported);
+        QCOMPARE(Client::supportsVersions(server,api),supported);
+        Network network;network.responses[u"/qbt/api/v2/app/version"_s]={server.toUtf8()};network.responses[u"/qbt/api/v2/app/webapiVersion"_s]={api.toUtf8()};
+        Client client(nullptr,&network);QSignalSpy errors(&client,&Client::errorOccurred);client.connectToServer(keyConnection());
+        if(supported) { QTRY_VERIFY(client.isConnected());QCOMPARE(client.serverVersion(),server);QCOMPARE(client.webApiVersion(),api); }
+        else { QTRY_VERIFY(!errors.isEmpty());QVERIFY(!client.isConnected());QVERIFY(std::none_of(network.sent.cbegin(),network.sent.cend(),[](const auto &sent) {return sent.request.url().path().endsWith(u"sync/maindata");})); }
+    }
+    void searchUsesNativeJobAndServerPost()
+    {
+        Network network;Client client(nullptr,&network);SearchWidget search(&client,nullptr);search.show();
+        network.responses[u"/qbt/api/v2/search/plugins"_s]={"[{\"name\":\"test\",\"fullName\":\"Test engine\",\"enabled\":true,\"version\":\"1.0\",\"supportedCategories\":[{\"id\":\"all\",\"name\":\"All\"},{\"id\":\"movies\",\"name\":\"Movies\"}]}]"};
+        network.responses[u"/qbt/api/v2/search/start"_s]={"{\"id\":123}"};
+        network.responses[u"/qbt/api/v2/search/results"_s]={"{\"status\":\"Stopped\",\"total\":1,\"results\":[{\"fileName\":\"Ubuntu\",\"fileUrl\":\"https://example.test/get?id=a%26b\",\"fileSize\":1024,\"nbSeeders\":7,\"nbLeechers\":2,\"engineName\":\"test\",\"siteUrl\":\"https://example.test\",\"descrLink\":\"https://example.test/item\",\"pubDate\":1700000000}]}"};
+        client.connectToServer(keyConnection());QTRY_VERIFY(client.isConnected());
+        auto *pattern=search.findChild<LineEdit *>(u"lineEditSearchPattern"_s);pattern->setText(u"Ubuntu"_s);
+        auto *start=search.findChild<QPushButton *>(u"searchButton"_s);QTRY_VERIFY(start->isEnabled());start->click();
+        QTRY_VERIFY(search.findChild<SearchJobWidget *>());auto *job=search.findChild<SearchJobWidget *>();QTRY_COMPARE(job->visibleResultsCount(),1);QCOMPARE(job->status(),SearchJobWidget::Status::Finished);
+        auto *tree=job->findChild<QTreeView *>(u"resultsBrowser"_s);QVERIFY(tree);QCOMPARE(tree->model()->index(0,SearchSortModel::SEEDS).data(SearchSortModel::UnderlyingDataRole).toLongLong(),7);
+        if(const auto screenshot=qEnvironmentVariable("REMOTE_SCREENSHOT_PATH");!screenshot.isEmpty()) QVERIFY(search.grab().save(screenshot+u".search.png"));
+        tree->selectionModel()->select(tree->model()->index(0,0),QItemSelectionModel::Select|QItemSelectionModel::Rows);
+        QVERIFY(QMetaObject::invokeMethod(tree,"doubleClicked",Q_ARG(QModelIndex,tree->model()->index(0,0))));
+        QTRY_VERIFY(std::any_of(network.sent.cbegin(),network.sent.cend(),[](const auto &sent) { return sent.request.url().path().endsWith(u"search/downloadTorrent") && sent.operation==QNetworkAccessManager::PostOperation; }));
+        const auto download=*std::find_if(network.sent.cbegin(),network.sent.cend(),[](const auto &sent) { return sent.request.url().path().endsWith(u"search/downloadTorrent"); });
+        QCOMPARE(QUrlQuery(QString::fromUtf8(download.body)).queryItemValue(u"torrentUrl"_s,QUrl::FullyDecoded),u"https://example.test/get?id=a%26b"_s);
+        auto *tabs=search.findChild<QTabWidget *>(u"tabWidget"_s);QVERIFY(QMetaObject::invokeMethod(tabs,"tabCloseRequested",Q_ARG(int,0)));
+        QTRY_VERIFY(std::any_of(network.sent.cbegin(),network.sent.cend(),[](const auto &sent) { return sent.request.url().path().endsWith(u"search/delete") && sent.operation==QNetworkAccessManager::PostOperation; }));
+        QCOMPARE(tabs->count(),0);
+    }
+    void searchLateStartIsDiscardedAfterProfileSwitch()
+    {
+        Network network;Client client(nullptr,&network);SearchWidget search(&client,nullptr);
+        network.responses[u"/qbt/api/v2/search/plugins"_s]={"[{\"name\":\"test\",\"fullName\":\"Test\",\"enabled\":true}]"};network.responses[u"/qbt/api/v2/search/start"_s]={"{\"id\":123}",200,100};
+        client.connectToServer(keyConnection());QTRY_VERIFY(client.isConnected());search.findChild<LineEdit *>(u"lineEditSearchPattern"_s)->setText(u"test"_s);
+        auto *start=search.findChild<QPushButton *>(u"searchButton"_s);QTRY_VERIFY(start->isEnabled());start->click();client.disconnectFromServer();QTest::qWait(150);
+        QVERIFY(!search.findChild<SearchJobWidget *>());QVERIFY(!start->isEnabled());
+    }
+    void nativeLogsIncrementFilterAndClearLocally()
+    {
+        Network network;Client client(nullptr,&network);ExecutionLogWidget widget(Log::ALL,nullptr);LogController controller(&client,&widget);widget.show();
+        network.responses[u"/qbt/api/v2/log/main"_s]={"[{\"id\":1,\"timestamp\":1700000000,\"type\":2,\"message\":\"Server started\"},{\"id\":2,\"timestamp\":1700000001,\"type\":4,\"message\":\"Server warning\"}]"};
+        network.responses[u"/qbt/api/v2/log/peers"_s]={"[{\"id\":1,\"timestamp\":1700000001,\"ip\":\"192.0.2.1\",\"blocked\":true,\"reason\":\"filter\"}]"};
+        client.connectToServer(keyConnection());QTRY_VERIFY(client.isConnected());
+        auto *messages=widget.findChild<LogMessageModel *>();auto *peers=widget.findChild<LogPeerModel *>();QVERIFY(messages);QVERIFY(peers);QTRY_COMPARE(messages->rowCount(),2);QTRY_COMPARE(peers->rowCount(),1);
+        QCOMPARE(messages->index(0,0).data(BaseLogModel::MessageRole).toString(),u"Server warning"_s);
+        QCOMPARE(messages->index(0,0).data(BaseLogModel::TimeRole).toString(),QLocale::system().toString(QDateTime::fromSecsSinceEpoch(1700000001),QLocale::ShortFormat));
+        if(const auto screenshot=qEnvironmentVariable("REMOTE_SCREENSHOT_PATH");!screenshot.isEmpty()) QVERIFY(widget.grab().save(screenshot+u".log.png"));
+        widget.setMessageTypes(Log::WARNING);QCOMPARE(widget.findChild<LogFilterModel *>()->rowCount(),1);
+        messages->reset();controller.refresh();QTest::qWait(30);QCOMPARE(messages->rowCount(),0);
+        network.responses[u"/qbt/api/v2/log/main"_s]={"[{\"id\":3,\"timestamp\":1700000002,\"type\":1,\"message\":\"New event\"}]"};controller.refresh();QTRY_COMPARE(messages->rowCount(),1);
+        QVERIFY(std::any_of(network.sent.cbegin(),network.sent.cend(),[](const auto &sent) { return sent.request.url().path().endsWith(u"log/main") && QUrlQuery(sent.request.url()).queryItemValue(u"last_known_id"_s)==u"2"; }));
+        client.disconnectFromServer();QCOMPARE(messages->rowCount(),0);QCOMPARE(peers->rowCount(),0);
+    }
+    void openDownloadWindowOverridesNeverShowAgain()
+    {
+        QSettings().setValue(u"remote/addDialog/skip"_s,true);
+        Network network;network.responses[u"/qbt/api/v2/app/preferences"_s]={"{\"save_path\":\"/server/downloads\"}"};
+        Window window(nullptr,&network);window.show();window.client()->connectToServer(keyConnection());QTRY_VERIFY(window.client()->isConnected());
+        auto *search=window.findChild<SearchWidget *>();QVERIFY(search);
+        emit search->sourceRequested(u"https://example.test/file.torrent"_s,AddTorrentOption::ShowDialog);
+        QTRY_VERIFY(window.findChild<AddNewTorrentDialog *>());auto *dialog=window.findChild<AddNewTorrentDialog *>();QTest::qWait(30);QVERIFY(dialog->isVisible());QCOMPARE(dialog->parameters().queryItemValue(u"savepath"_s),u"/server/downloads"_s);
+        QVERIFY(std::none_of(network.sent.cbegin(),network.sent.cend(),[](const auto &sent) {return sent.request.url().path().endsWith(u"torrents/add");}));
+        dialog->reject();
+    }
+    void searchPagesResultsBeforeFinishingAndStopsWithPost()
+    {
+        Network network;Client client(nullptr,&network);SearchWidget search(&client,nullptr);
+        network.responses[u"/qbt/api/v2/search/plugins"_s]={"[{\"name\":\"test\",\"fullName\":\"Test\",\"enabled\":true}]"};
+        network.responses[u"/qbt/api/v2/search/start"_s]={"{\"id\":123}"};
+        network.responses[u"/qbt/api/v2/search/results"_s]={"{\"status\":\"Running\",\"total\":2,\"results\":[{\"fileName\":\"test one\",\"fileUrl\":\"magnet:?xt=urn:btih:a\"}]}"};
+        network.responses[u"/qbt/api/v2/search/stop"_s]={"",204};
+        client.connectToServer(keyConnection());QTRY_VERIFY(client.isConnected());search.findChild<LineEdit *>(u"lineEditSearchPattern"_s)->setText(u"test"_s);auto *start=search.findChild<QPushButton *>(u"searchButton"_s);QTRY_VERIFY(start->isEnabled());start->click();
+        QTRY_VERIFY(search.findChild<SearchJobWidget *>());auto *job=search.findChild<SearchJobWidget *>();QTRY_COMPARE(job->searchResults().size(),1);QCOMPARE(job->status(),SearchJobWidget::Status::Ongoing);
+        network.responses[u"/qbt/api/v2/search/results"_s]={"{\"status\":\"Stopped\",\"total\":2,\"results\":[{\"fileName\":\"test two\",\"fileUrl\":\"magnet:?xt=urn:btih:b\"}]}"};
+        auto *stop=search.findChild<QPushButton *>(u"stopButton"_s);QVERIFY(stop->isEnabled());stop->click();QTRY_COMPARE(job->status(),SearchJobWidget::Status::Aborted);QTRY_COMPARE(job->searchResults().size(),2);
+        QVERIFY(std::any_of(network.sent.cbegin(),network.sent.cend(),[](const auto &sent) {return sent.request.url().path().endsWith(u"search/results") && QUrlQuery(sent.request.url()).queryItemValue(u"offset"_s)==u"1";}));
+        QVERIFY(std::any_of(network.sent.cbegin(),network.sent.cend(),[](const auto &sent) {return sent.request.url().path().endsWith(u"search/stop") && sent.operation==QNetworkAccessManager::PostOperation;}));
+    }
+    void mainTabsUseOriginalFormsAndPersistVisibility()
+    {
+        { Window window;window.show();auto *tabs=window.findChild<QTabWidget *>(u"remoteMainTabs"_s);QVERIFY(tabs);QCOMPARE(tabs->count(),3);
+          QVERIFY(qobject_cast<SearchWidget *>(tabs->widget(1)));QVERIFY(qobject_cast<ExecutionLogWidget *>(tabs->widget(2)));
+          tabs->setCurrentIndex(1);QTRY_VERIFY(!window.findChild<LineEdit *>(u"remoteTransferFilter"_s)->isVisible());
+          window.findChild<QAction *>(u"actionSearchWidget"_s)->setChecked(false);QCOMPARE(tabs->count(),2); }
+        Window restored;QCOMPARE(restored.findChild<QTabWidget *>(u"remoteMainTabs"_s)->count(),2);
     }
 
     void nativeWindowStartsDisconnected()

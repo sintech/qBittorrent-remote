@@ -7,9 +7,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
-set(CMAKE_AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../gui" "${CMAKE_CURRENT_SOURCE_DIR}/../gui/properties" "${CMAKE_CURRENT_BINARY_DIR}")
+set(CMAKE_AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../gui" "${CMAKE_CURRENT_SOURCE_DIR}/../gui/properties" "${CMAKE_CURRENT_SOURCE_DIR}/../gui/search" "${CMAKE_CURRENT_BINARY_DIR}")
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Network Widgets Svg)
-add_library(qbt_remote STATIC activation.cpp activation.h settingsdialog.cpp settingsdialog.h torrentmetadata.cpp torrentmetadata.h profiles.cpp profiles.h profileeditor.cpp profileeditor.h client.cpp client.h torrentmodel.cpp torrentmodel.h window.cpp window.h windowsettings.cpp windowactivation.cpp windowgeometry.cpp torrentmenu.cpp properties.cpp properties.h propertymenus.cpp sidebar.cpp sidebar.h
+add_library(qbt_remote STATIC search.cpp logcontroller.cpp logcontroller.h
+    ../gui/search/searchwidget.h ../gui/search/searchwidget.ui
+    ../gui/search/searchjobwidget.cpp ../gui/search/searchjobwidget.h ../gui/search/searchjobwidget.ui
+    ../gui/search/searchsortmodel.cpp ../gui/search/searchsortmodel.h
+    ../gui/search/pluginselectdialog.ui
+    ../gui/executionlogwidget.cpp ../gui/executionlogwidget.h ../gui/executionlogwidget.ui
+    ../gui/log/logmodel.cpp ../gui/log/logmodel.h
+    ../gui/log/logfiltermodel.cpp ../gui/log/logfiltermodel.h
+    ../gui/log/loglistview.cpp ../gui/log/loglistview.h activation.cpp activation.h settingsdialog.cpp settingsdialog.h torrentmetadata.cpp torrentmetadata.h profiles.cpp profiles.h profileeditor.cpp profileeditor.h client.cpp client.h torrentmodel.cpp torrentmodel.h window.cpp window.h windowsettings.cpp windowactivation.cpp windowgeometry.cpp torrentmenu.cpp properties.cpp properties.h propertymenus.cpp sidebar.cpp sidebar.h
     ../gui/uithememanager.cpp ../gui/uithememanager.h
     ../gui/uithemesource.cpp ../gui/uithemesource.h
     ../app/applicationinstancemanager.cpp ../app/applicationinstancemanager.h

@@ -30,7 +30,11 @@
 
 #pragma once
 
+#ifdef QBT_REMOTE_CLIENT
+#include <deque>
+#else
 #include <boost/circular_buffer.hpp>
+#endif
 
 #include <QAbstractListModel>
 #include <QColor>
@@ -82,7 +86,11 @@ protected:
 private:
     void loadColors();
 
+#ifdef QBT_REMOTE_CLIENT
+    std::deque<Message> m_messages;
+#else
     boost::circular_buffer_space_optimized<Message> m_messages;
+#endif
     QColor m_timeForeground;
 };
 
@@ -94,7 +102,7 @@ class LogMessageModel : public BaseLogModel
 public:
     explicit LogMessageModel(QObject *parent = nullptr);
 
-private slots:
+public slots:
     void handleNewMessage(const Log::Msg &message);
 
 private:
@@ -113,7 +121,7 @@ class LogPeerModel : public BaseLogModel
 public:
     explicit LogPeerModel(QObject *parent = nullptr);
 
-private slots:
+public slots:
     void handleNewMessage(const Log::Peer &peer);
 
 private:

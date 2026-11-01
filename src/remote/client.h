@@ -35,6 +35,10 @@ namespace Remote
         bool isConnected() const;
         QUrl serverUrl() const;
         void command(const QString &method, const QUrlQuery &parameters);
+        void post(const QString &method, const QUrlQuery &parameters, std::function<void(const QByteArray &)> callback);
+        QString serverVersion() const { return m_serverVersion; }
+        QString webApiVersion() const { return m_webApiVersion; }
+        static bool supportsVersions(const QString &serverVersion, const QString &webApiVersion);
         void createCategoryAndAssign(const QString &category, const QStringList &hashes);
         void addTorrentFile(const QString &path, const QUrlQuery &parameters = {}, const QString &hash = {}, const QMap<int, QStringList> &priorities = {});
         void get(const QString &method, const QUrlQuery &parameters,
@@ -62,6 +66,8 @@ namespace Remote
         QNetworkAccessManager *m_network = nullptr;
         QTimer m_pollTimer;
         Connection m_connection;
+        QString m_serverVersion;
+        QString m_webApiVersion;
         QSet<QNetworkReply *> m_pending;
         qint64 m_revision = 0;
         quint64 m_generation = 0;

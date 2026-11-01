@@ -1,7 +1,7 @@
 # Native remote frontend — first preview
 
-This experimental frontend targets a qBittorrent **5.2.x** Web API server
-(tested protocol fixture: 5.2.4). It uses the unchanged upstream
+This experimental frontend targets qBittorrent **5.2.x and 5.3.x** Web API servers
+(protocol fixtures include 5.2.4 / API 2.15.1 and 5.3.0 / API 2.16.2). It uses the unchanged upstream
 `src/gui/mainwindow.ui` and `src/gui/properties/propertieswidget.ui`, together
 with the actual upstream widget classes and theme system. It does not embed
 a browser and does not start a local BitTorrent session.
@@ -199,8 +199,8 @@ Native session-controller sections are excluded from the API-only target; shared
 view code is still compiled from the same source files. The local torrent engine
 is never instantiated. Full functionality parity is not claimed.
 
-Server settings, RSS, search plugins, torrent creation, session pause and statistics
-remain unported. Torrent options opens the server Web UI.
+Server settings, RSS, torrent creation, session pause and statistics
+remain unported. Options opens client settings; Tools > Server Web UI opens server settings.
 Renaming files before adding a torrent and fetching magnet metadata before
 acceptance are unavailable. Rename and priority commands are available in
 Content after addition; tracker tier reordering and server-directory browsing
@@ -221,3 +221,70 @@ verification must be reported separately from these tests.
 
 A proposed R-badge application icon is in `doc/assets/remote-icon-proposal.svg`.
 It is a review proposal only; executable/tray/document icons remain unchanged.
+
+
+## Search and execution log
+
+The main tabs use the original `HidableTabWidget`: Transfers, Search and Execution
+Log. View > Search Engine and View > Log > Show toggle their visibility; these
+choices persist locally. Alt+1, Alt+2 and Alt+4 switch to the same tabs as upstream.
+Transfer filtering hides when another main tab is selected.
+
+Search uses the unchanged `searchwidget.ui`, the actual `SearchJobWidget` source,
+unchanged `searchjobwidget.ui` and actual `SearchSortModel`. Its size/seeder/name
+filters, result sorting, column menu, copy actions and description-page actions
+are the original implementations. The controller sends queries/categories/plugin
+selection to the server, retrieves result pages with offsets, and supports Stop
+and closing individual/all result tabs. Python and search plugins run only on the
+server; no Python installation is required on Windows.
+
+Search plugins opens the original `pluginselectdialog.ui` with a server adapter
+for listing, enabling/disabling, uninstalling, updating and installing from an
+HTTP(S) plugin URL. The source URL must be accessible to the server. Local `.py`
+upload is not supported by the API. Installation/update completion and failures
+are reported in the server execution log. Search jobs/results are not persisted
+across client restarts; IDs are never reused across a connection/profile reset.
+
+The original **Open download window** command opens the original add dialog for
+magnet and HTTP(S) links, fetching server defaults and preserving server paths.
+Explicit Open download window overrides Never show again for that activation;
+Cancel does not add a torrent. HTTP(S) links are submitted as URLs on acceptance.
+A plugin that needs its own special download handler may not work through this
+URL route. **Download** and default non-magnet activation instead use
+`POST /search/downloadTorrent`, executing the plugin's handler on the server with
+server defaults. This endpoint adds directly and cannot return a `.torrent` for
+client-side pre-add editing. Magnet activation uses the regular addition flow.
+
+Execution Log is the actual `ExecutionLogWidget` with its unchanged form,
+`LogMessageModel`, `LogPeerModel`, `LogFilterModel` and `LogListView` delegate. The
+server supplies General and Blocked IPs records, timestamps, severity and reasons.
+Updates use separate `last_known_id` cursors; the native bounded view retains up
+to 20,000 messages. The native Copy/Clear menus and severity filters are retained.
+Clear affects the client view, not server logs, and cleared old records do not
+reappear on the next incremental poll. Connection changes/full synchronization
+reset cursors and reload available server logs. Polling pauses when the log tab is
+not visible. As with upstream, only records still retained on the server are
+available; this is not a disk log reader.
+
+## API compatibility
+
+One binary handles both supported server families. Authentication queries
+`/app/version` and `/app/webapiVersion` before synchronization. It accepts 5.2.x
+and 5.3.x with Web API major 2, minimum 2.15.1; malformed versions, unsupported
+server families and another API major are rejected with a diagnostic. This
+identifies the supported protocol family, not a guarantee of all future changes.
+
+| Upstream source contract | Web API | Validation |
+| --- | --- | --- |
+| 5.2.4 | 2.15.1 | Source review and network/widget fixtures |
+| 5.3.0 | 2.16.2 | Source comparison and network/widget fixtures |
+
+Sources compared: upstream pinned 5.2.4 commit
+`a1e4649cb8ae581925acc161dbab5cbc6584c542` and `release-5.3.0`, including search,
+log, sync, torrent serialization and HTTP method requirements. Search results and
+log records retain the same fields. Extra 5.3 fields are ignored; absent optional
+fields such as publication dates remain empty. All mutations use POST, including
+`search/downloadTorrent`, which 5.3 explicitly requires. Successful empty 200/204
+responses are accepted for writes. Sync revision deltas/full snapshots use the
+existing adapter. No local live 5.3 server was launched; fixtures and source
+comparison do not replace a check against a user's real deployment.

@@ -34,7 +34,11 @@
 #include <QSet>
 #include <QWidget>
 
+#ifndef QBT_REMOTE_CLIENT
 #include "base/utils/thread.h"
+#endif
+#include "gui/addtorrentoption.h"
+namespace Remote { class Client; }
 #include "gui/guiapplicationcomponent.h"
 
 class QEvent;
@@ -54,15 +58,32 @@ class SearchWidget : public GUIApplicationComponent<QWidget>
     Q_DISABLE_COPY_MOVE(SearchWidget)
 
 public:
+#ifdef QBT_REMOTE_CLIENT
+    explicit SearchWidget(Remote::Client *client, QWidget *parent);
+#else
     explicit SearchWidget(IGUIApplication *app, QWidget *parent);
+#endif
     ~SearchWidget() override;
 
     void giveFocusToSearchInput();
 
 signals:
     void searchFinished(bool failed);
+#ifdef QBT_REMOTE_CLIENT
+    void sourceRequested(const QString &source, AddTorrentOption option);
+#endif
 
 private:
+#ifdef QBT_REMOTE_CLIENT
+    struct RemoteState;
+    RemoteState *m_remote;
+    void refreshPlugins();
+    void startSearch();
+    void pollSearches();
+    void closeRemoteTab(int index);
+    void showPlugins();
+    void refreshControls();
+#else
     bool eventFilter(QObject *object, QEvent *event) override;
 
     void onPreferencesChanged();
@@ -116,4 +137,5 @@ private:
     DataStorage *m_dataStorage = nullptr;
 
     QStringListModel *m_searchPatternCompleterModel = nullptr;
+#endif
 };

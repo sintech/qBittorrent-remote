@@ -28,7 +28,9 @@
 
 #pragma once
 
+#ifndef QBT_REMOTE_CLIENT
 #include <boost/circular_buffer.hpp>
+#endif
 
 #include <QObject>
 #include <QReadWriteLock>
@@ -69,6 +71,7 @@ namespace Log
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(Log::MsgTypes)
 
+#ifndef QBT_REMOTE_CLIENT
 class Logger final : public QObject
 {
     Q_OBJECT
@@ -102,3 +105,5 @@ private:
 
 // Helper function
 void LogMsg(const QString &message, const Log::MsgType &type = Log::NORMAL);
+
+#endif // !QBT_REMOTE_CLIENT

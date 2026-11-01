@@ -41,12 +41,21 @@
 #include <QUrl>
 
 #include "base/logger.h"
+#ifndef QBT_REMOTE_CLIENT
 #include "base/preferences.h"
 #include "base/search/searchdownloadhandler.h"
 #include "base/search/searchhandler.h"
 #include "base/search/searchpluginmanager.h"
 #include "base/utils/misc.h"
 #include "gui/interfaces/iguiapplication.h"
+#include "gui/guiaddtorrentmanager.h"
+#else
+#include <QSettings>
+#include <QDebug>
+#include "base/search/searchhandler.h"
+#include "base/utils/misc.h"
+#define LogMsg(message, ...) qWarning().noquote() << message
+#endif
 #include "gui/lineedit.h"
 #include "gui/uithememanager.h"
 #include "searchsortmodel.h"
@@ -285,6 +294,7 @@ LineEdit *SearchJobWidget::lineEditSearchResultsFilter() const
 
 void SearchJobWidget::assignSearchHandler(SearchHandler *searchHandler)
 {
+#ifndef QBT_REMOTE_CLIENT
     Q_ASSERT(searchHandler);
     if (!searchHandler) [[unlikely]]
         return;
@@ -305,14 +315,18 @@ void SearchJobWidget::assignSearchHandler(SearchHandler *searchHandler)
 
     updateResultsCount();
     setStatus(Status::Ongoing);
+#else
+    Q_UNUSED(searchHandler);
+#endif
 }
 
 void SearchJobWidget::cancelSearch()
 {
+#ifndef QBT_REMOTE_CLIENT
     if (!m_searchHandler)
         return;
-
     m_searchHandler->cancelSearch();
+#endif
     setStatus(Status::Aborted);
 }
 
@@ -421,6 +435,9 @@ void SearchJobWidget::downloadTorrent(const QModelIndex &rowIndex, const AddTorr
     const QString engineName = m_proxyModel->data(
                 m_proxyModel->index(rowIndex.row(), SearchSortModel::ENGINE_NAME)).toString();
 
+#ifdef QBT_REMOTE_CLIENT
+    emit remoteDownloadRequested(torrentUrl, engineName, option);
+#else
     if (torrentUrl.startsWith(u"magnet:", Qt::CaseInsensitive))
     {
         addTorrentToSession(torrentUrl, option);
@@ -436,12 +453,17 @@ void SearchJobWidget::downloadTorrent(const QModelIndex &rowIndex, const AddTorr
         });
     }
 
+#endif
     setRowVisited(rowIndex.row());
 }
 
 void SearchJobWidget::addTorrentToSession(const QString &source, const AddTorrentOption option)
 {
+#ifndef QBT_REMOTE_CLIENT
     app()->addTorrentManager()->addTorrent(source, {}, option);
+#else
+    emit remoteDownloadRequested(source, {}, option);
+#endif
 }
 
 void SearchJobWidget::updateResultsCount()
@@ -516,15 +538,22 @@ void SearchJobWidget::fillFilterComboBoxes()
 
 void SearchJobWidget::filterSearchResults(const QString &name)
 {
+#ifdef QBT_REMOTE_CLIENT
+    const bool regex = QSettings().value(u"remote/search/regex"_s, false).toBool();
+    const QString pattern = regex ? name : QRegularExpression::wildcardToRegularExpression(name, QRegularExpression::UnanchoredWildcardConversion);
+#else
     const QString pattern = (Preferences::instance()->getRegexAsFilteringPatternForSearchJob()
         ? name : Utils::String::wildcardToRegexPattern(name));
+#endif
     m_proxyModel->setFilterRegularExpression(QRegularExpression(pattern, QRegularExpression::CaseInsensitiveOption));
     updateResultsCount();
 }
 
 void SearchJobWidget::showFilterContextMenu()
 {
+#ifndef QBT_REMOTE_CLIENT
     const Preferences *pref = Preferences::instance();
+#endif
 
     QMenu *menu = m_lineEditSearchResultsFilter->createStandardContextMenu();
     menu->setAttribute(Qt::WA_DeleteOnClose);
@@ -532,8 +561,13 @@ void SearchJobWidget::showFilterContextMenu()
 
     QAction *useRegexAct = menu->addAction(tr("Use regular expressions"));
     useRegexAct->setCheckable(true);
+#ifdef QBT_REMOTE_CLIENT
+    useRegexAct->setChecked(QSettings().value(u"remote/search/regex"_s,false).toBool());
+    connect(useRegexAct, &QAction::toggled, this, [](bool value) { QSettings().setValue(u"remote/search/regex"_s,value); });
+#else
     useRegexAct->setChecked(pref->getRegexAsFilteringPatternForSearchJob());
     connect(useRegexAct, &QAction::toggled, pref, &Preferences::setRegexAsFilteringPatternForSearchJob);
+#endif
     connect(useRegexAct, &QAction::toggled, this, [this]() { filterSearchResults(m_lineEditSearchResultsFilter->text()); });
 
     menu->popup(QCursor::pos());
@@ -543,9 +577,19 @@ void SearchJobWidget::contextMenuEvent(QContextMenuEvent *event)
 {
     auto *menu = new QMenu(this);
     menu->setAttribute(Qt::WA_DeleteOnClose);
+    menu->setToolTipsVisible(true);
 
-    menu->addAction(UIThemeManager::instance()->getIcon(u"download"_s)
+    auto *openDownload = menu->addAction(UIThemeManager::instance()->getIcon(u"download"_s)
         , tr("Open download window"), this, [this]() { downloadTorrents(AddTorrentOption::ShowDialog); });
+#ifdef QBT_REMOTE_CLIENT
+    const auto rows = m_ui->resultsBrowser->selectionModel()->selectedRows();
+    const bool canShowDialog = !rows.isEmpty() && std::all_of(rows.cbegin(),rows.cend(),[this](const QModelIndex &row)
+    { const auto scheme=QUrl(m_proxyModel->index(row.row(),SearchSortModel::DL_LINK).data().toString()).scheme().toLower();return scheme==u"magnet" || scheme==u"http" || scheme==u"https"; });
+    openDownload->setEnabled(canShowDialog);
+    openDownload->setToolTip(tr("Open the add dialog for this URL. Plugin-specific downloads through the server use server defaults."));
+#else
+    Q_UNUSED(openDownload);
+#endif
     menu->addAction(UIThemeManager::instance()->getIcon(u"downloading"_s, u"download"_s)
         , tr("Download"), this, [this]() { downloadTorrents(AddTorrentOption::SkipDialog); });
     menu->addSeparator();
@@ -567,12 +611,20 @@ void SearchJobWidget::contextMenuEvent(QContextMenuEvent *event)
 
 void SearchJobWidget::loadSettings()
 {
+#ifdef QBT_REMOTE_CLIENT
+    header()->restoreState(QSettings().value(u"remote/search/header"_s).toByteArray());
+#else
     header()->restoreState(Preferences::instance()->getSearchTabHeaderState());
+#endif
 }
 
 void SearchJobWidget::saveSettings() const
 {
+#ifdef QBT_REMOTE_CLIENT
+    QSettings().setValue(u"remote/search/header"_s,header()->saveState());
+#else
     Preferences::instance()->setSearchTabHeaderState(header()->saveState());
+#endif
 }
 
 int SearchJobWidget::visibleColumnsCount() const
