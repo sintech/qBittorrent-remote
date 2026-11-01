@@ -288,3 +288,17 @@ fields such as publication dates remain empty. All mutations use POST, including
 responses are accepted for writes. Sync revision deltas/full snapshots use the
 existing adapter. No local live 5.3 server was launched; fixtures and source
 comparison do not replace a check against a user's real deployment.
+
+
+Search result titles returned with URL escaping (for example `%20` or UTF-8
+`%D0...`) are decoded once before reaching the original result model. Already
+readable Unicode, literal plus signs and malformed escapes are preserved; invalid
+UTF-8 is not replaced with broken text. Download and description URLs are kept
+unchanged. Name filtering and copying use the decoded title.
+
+
+The approved orange R-badge icon is now the Remote application's icon: the Windows
+EXE resource (ID 101), application/dialog/window icon and tray icon use it. The
+original qBittorrent resources are unchanged. The source remains
+`doc/assets/remote-icon-proposal.svg`; `doc/tools/remote-icon` is a small Qt/CMake generator for the
+committed multi-resolution ICO (16–256 px). The document icon (ID 102) is unchanged.

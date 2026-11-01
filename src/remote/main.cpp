@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include <QApplication>
+#include <QIcon>
 #include <QSettings>
 #include <QLocale>
 #include <QTranslator>
@@ -20,6 +21,7 @@ using namespace Qt::StringLiterals;
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    QApplication::setWindowIcon(QIcon(u":/remote-icons/application.ico"_s));
     QCoreApplication::setOrganizationName(u"qBittorrent"_s);
     QCoreApplication::setApplicationName(u"qBittorrent-remote"_s);
     QCoreApplication::setApplicationVersion(u"5.2.4-remote-preview"_s);

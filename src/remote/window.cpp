@@ -63,7 +63,7 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     UIThemeManager::initInstance();
     // Reuse the unmodified upstream window, menus and toolbar, not a web view.
     setWindowTitle(u"qBittorrent Remote — 5.2.4"_s);
-    setWindowIcon(QIcon(u":/icons/qbittorrent.ico"_s));
+    setWindowIcon(QIcon(u":/remote-icons/application.ico"_s));
     // An unfinished action must never look operational or act on a local session.
     for (auto *action : findChildren<QAction *>())
     {

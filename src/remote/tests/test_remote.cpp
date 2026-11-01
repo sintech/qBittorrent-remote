@@ -65,6 +65,14 @@
 #include "gui/downloadfromurldialog.h"
 #include "gui/deletionconfirmationdialog.h"
 #include <QSettings>
+#include <QScopeGuard>
+#include <QtEndian>
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 #include "gui/search/searchwidget.h"
 #include "gui/search/searchjobwidget.h"
@@ -1355,6 +1363,41 @@ private slots:
         QTRY_VERIFY(std::any_of(network.sent.cbegin(),network.sent.cend(),[](const auto &sent) { return sent.request.url().path().endsWith(u"search/delete") && sent.operation==QNetworkAccessManager::PostOperation; }));
         QCOMPARE(tabs->count(),0);
     }
+    void searchDecodesTitlesWithoutChangingDownloadLinks()
+    {
+        Network network;Client client(nullptr,&network);
+        QSettings().setValue(u"Search/FilteringMode"_s,0); // native Everywhere mode
+        SearchWidget search(&client,nullptr);
+        network.responses[u"/qbt/api/v2/search/plugins"_s]={"[{\"name\":\"test\",\"fullName\":\"Test\",\"enabled\":true}]"};
+        network.responses[u"/qbt/api/v2/search/start"_s]={"{\"id\":123}"};
+        const QList<QPair<QString,QString>> names {
+            {u"Titanic%201997%20%5BREMUX%5D"_s,u"Titanic 1997 [REMUX]"_s},
+            {u"%D0%A2%D0%B8%D1%82%D0%B0%D0%BD%D0%B8%D0%BA%20BluRay"_s,u"Титаник BluRay"_s},
+            {u"Титаник%20BluRay"_s,u"Титаник BluRay"_s},
+            {u"Normal + title 100% ready"_s,u"Normal + title 100% ready"_s},
+            {u"Title%2520literal"_s,u"Title%20literal"_s},
+            {u"Bad%ZZ%2"_s,u"Bad%ZZ%2"_s},
+            {u"Bad%FF%20title"_s,u"Bad%FF%20title"_s}
+        };
+        const auto link=u"https://example.test/file?a=x%26y&token=hello%20world"_s;
+        QJsonArray rows;for(const auto &[encoded,display]:names) rows.append(QJsonObject{{u"fileName"_s,encoded},{u"fileUrl"_s,link}});
+        network.responses[u"/qbt/api/v2/search/results"_s]={QJsonDocument(QJsonObject{{u"status"_s,u"Stopped"_s},{u"total"_s,names.size()},{u"results"_s,rows}}).toJson()};
+        client.connectToServer(keyConnection());QTRY_VERIFY(client.isConnected());
+        search.findChild<LineEdit *>(u"lineEditSearchPattern"_s)->setText(u"test"_s);
+        auto *start=search.findChild<QPushButton *>(u"searchButton"_s);QTRY_VERIFY(start->isEnabled());start->click();
+        QTRY_VERIFY(search.findChild<SearchJobWidget *>());auto *job=search.findChild<SearchJobWidget *>();QTRY_COMPARE(job->searchResults().size(),names.size());
+        auto *tree=job->findChild<QTreeView *>(u"resultsBrowser"_s);QCOMPARE(tree->model()->rowCount(),names.size());
+        for(qsizetype i=0;i<names.size();++i)
+        {
+            QCOMPARE(job->searchResults()[i].fileName,names[i].second);
+            QCOMPARE(job->searchResults()[i].fileUrl,link);
+            QVERIFY(!tree->model()->match(tree->model()->index(0,0),Qt::DisplayRole,names[i].second,1,Qt::MatchExactly).isEmpty());
+        }
+        job->lineEditSearchResultsFilter()->setText(u"REMUX"_s);
+        QTRY_COMPARE(job->visibleResultsCount(),1);
+        QCOMPARE(tree->model()->index(0,0).data().toString(),u"Titanic 1997 [REMUX]"_s);
+    }
+
     void searchLateStartIsDiscardedAfterProfileSwitch()
     {
         Network network;Client client(nullptr,&network);SearchWidget search(&client,nullptr);
@@ -1411,6 +1454,45 @@ private slots:
           tabs->setCurrentIndex(1);QTRY_VERIFY(!window.findChild<LineEdit *>(u"remoteTransferFilter"_s)->isVisible());
           window.findChild<QAction *>(u"actionSearchWidget"_s)->setChecked(false);QCOMPARE(tabs->count(),2); }
         Window restored;QCOMPARE(restored.findChild<QTabWidget *>(u"remoteMainTabs"_s)->count(),2);
+    }
+
+    void remoteIconContainsApprovedBadgeAndIsEmbeddedOnWindows()
+    {
+        const auto hasBadge=[](const QImage &image)
+        {
+            for(int y=0;y<image.height();++y) for(int x=0;x<image.width();++x)
+            {
+                const auto c=image.pixelColor(x,y);
+                if(c.alpha()>200 && c.red()>220 && c.green()>100 && c.green()<200 && c.blue()<130) return true;
+            }
+            return false;
+        };
+        const QIcon icon(u":/remote-icons/application.ico"_s);
+        QVERIFY(!icon.isNull());
+        for(int size:{16,32,64,256})
+        { QVERIFY(icon.availableSizes().contains(QSize(size,size)));QVERIFY(hasBadge(icon.pixmap(size,size).toImage())); }
+        Window window;QVERIFY(hasBadge(window.windowIcon().pixmap(64,64).toImage()));
+#ifdef Q_OS_WIN
+        const auto executable=QDir(QCoreApplication::applicationDirPath()).filePath(u"qbittorrent-remote.exe"_s);
+        const auto module=LoadLibraryExW(reinterpret_cast<LPCWSTR>(executable.utf16()),nullptr,LOAD_LIBRARY_AS_DATAFILE);
+        QVERIFY(module);const auto release=qScopeGuard([module] { FreeLibrary(module); });
+        const auto groupResource=FindResourceW(module,MAKEINTRESOURCEW(101),MAKEINTRESOURCEW(14));QVERIFY(groupResource);
+        const auto loadedGroup=LoadResource(module,groupResource);QVERIFY(loadedGroup);
+        const QByteArray group(static_cast<const char *>(LockResource(loadedGroup)),SizeofResource(module,groupResource));
+        QVERIFY(group.size()>=6);const int count=qFromLittleEndian<quint16>(group.constData()+4);
+        bool found=false;
+        for(int i=0;i<count;++i)
+        {
+            const int offset=6+i*14;QVERIFY(group.size()>=offset+14);
+            if(static_cast<quint8>(group[offset])!=64) continue;
+            const auto id=qFromLittleEndian<quint16>(group.constData()+offset+12);
+            const auto resource=FindResourceW(module,MAKEINTRESOURCEW(id),MAKEINTRESOURCEW(3));QVERIFY(resource);
+            const auto loaded=LoadResource(module,resource);QVERIFY(loaded);
+            const QByteArray png(static_cast<const char *>(LockResource(loaded)),SizeofResource(module,resource));
+            const auto image=QImage::fromData(png,"PNG");QVERIFY(!image.isNull());QVERIFY(hasBadge(image));found=true;break;
+        }
+        QVERIFY(found);
+#endif
     }
 
     void nativeWindowStartsDisconnected()

@@ -22,10 +22,41 @@
 #include <QSettings>
 #include <QShortcut>
 #include <QSignalBlocker>
+#include <QStringDecoder>
 #include <QTimer>
 #include <QTabBar>
 
 using namespace Qt::StringLiterals;
+
+namespace
+{
+    // Some engines return URL-escaped titles. Decode the display name once;
+    // download/description URLs must retain their original escaping.
+    QString displaySearchName(const QString &name)
+    {
+        const auto bytes=name.toUtf8();QByteArray decoded;
+        decoded.reserve(bytes.size());
+        const auto hex=[](char c) -> int
+        {
+            if(c>='0' && c<='9') return c-'0';
+            if(c>='a' && c<='f') return c-'a'+10;
+            if(c>='A' && c<='F') return c-'A'+10;
+            return -1;
+        };
+        for(qsizetype i=0;i<bytes.size();++i)
+        {
+            if(bytes[i]=='%' && i+2<bytes.size())
+            {
+                const int high=hex(bytes[i+1]),low=hex(bytes[i+2]);
+                if(high>=0 && low>=0) { decoded.append(char(high*16+low));i+=2;continue; }
+            }
+            decoded.append(bytes[i]);
+        }
+        QStringDecoder decoder(QStringDecoder::Utf8);
+        const QString result=decoder.decode(decoded);
+        return decoder.hasError()?name:result;
+    }
+}
 
 struct SearchWidget::RemoteState
 {
@@ -227,7 +258,7 @@ void SearchWidget::pollSearches()
             for(const auto &entry:d[u"results"].toArray())
             {
                 const auto p=entry.toObject();SearchResult r;
-                r.fileName=p[u"fileName"].toString();r.fileUrl=p[u"fileUrl"].toString();r.fileSize=p[u"fileSize"].toInteger();r.nbSeeders=p[u"nbSeeders"].toInteger();r.nbLeechers=p[u"nbLeechers"].toInteger();r.engineName=p[u"engineName"].toString();r.siteUrl=p[u"siteUrl"].toString();r.descrLink=p[u"descrLink"].toString();
+                r.fileName=displaySearchName(p[u"fileName"].toString());r.fileUrl=p[u"fileUrl"].toString();r.fileSize=p[u"fileSize"].toInteger();r.nbSeeders=p[u"nbSeeders"].toInteger();r.nbLeechers=p[u"nbLeechers"].toInteger();r.engineName=p[u"engineName"].toString();r.siteUrl=p[u"siteUrl"].toString();r.descrLink=p[u"descrLink"].toString();
                 if(const auto date=p[u"pubDate"].toInteger();date>0) r.pubDate=QDateTime::fromSecsSinceEpoch(date);
                 results.append(r);
             }
