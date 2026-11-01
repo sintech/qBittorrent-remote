@@ -263,7 +263,7 @@ void Client::command(const QString &method, const QUrlQuery &parameters)
     }, true);
 }
 
-void Client::addTorrentFile(const QString &path, const QString &savePath)
+void Client::addTorrentFile(const QString &path, const QUrlQuery &parameters, const QString &hash, const QMap<int, QStringList> &priorities)
 {
     if (!m_connected)
         return;
@@ -282,17 +282,27 @@ void Client::addTorrentFile(const QString &path, const QString &savePath)
     part.setHeader(QNetworkRequest::ContentTypeHeader, u"application/x-bittorrent"_s);
     part.setBodyDevice(file);
     multipart->append(part);
-    if (!savePath.isEmpty())
+    auto options = parameters;
+    const bool stagePriorities = !hash.isEmpty() && !priorities.isEmpty();
+    const bool startAfterPriorities = stagePriorities && parameters.queryItemValue(u"stopped"_s) != u"true";
+    if (stagePriorities)
     {
-        QHttpPart location;
-        location.setHeader(QNetworkRequest::ContentDispositionHeader, u"form-data; name=\"savepath\""_s);
-        location.setBody(savePath.toUtf8());
-        multipart->append(location);
+        options.removeAllQueryItems(u"stopped"_s);
+        options.addQueryItem(u"stopped"_s, u"true"_s);
     }
-    request(u"torrents/add"_s, {}, true, [this](const QByteArray &body)
+    for (const auto &[name, value] : options.queryItems(QUrl::FullyDecoded))
+    {
+        QHttpPart option;
+        option.setHeader(QNetworkRequest::ContentDispositionHeader, QString(u"form-data; name=\""_s + name + u"\""_s));
+        option.setBody(value.toUtf8());
+        multipart->append(option);
+    }
+    request(u"torrents/add"_s, {}, true, [this, hash, priorities, stagePriorities, startAfterPriorities](const QByteArray &body)
     {
         if (body.trimmed() == "Fails.")
             emit errorOccurred(tr("The server could not add the torrent."));
+        if (body.trimmed() == "Ok." && stagePriorities)
+            applyFilePriorities(hash, priorities, startAfterPriorities);
         m_pollTimer.start(0);
     }, true, multipart);
 }
@@ -301,4 +311,36 @@ void Client::get(const QString &method, const QUrlQuery &parameters, Callback ca
 {
     if (m_connected)
         request(method, parameters, false, std::move(callback));
+}
+
+void Client::createCategoryAndAssign(const QString &category, const QStringList &hashes)
+{
+    if (!m_connected) return;
+    QUrlQuery form; form.addQueryItem(u"category"_s, category); form.addQueryItem(u"savePath"_s, QString());
+    request(u"torrents/createCategory"_s, form, true, [this, category, hashes](const QByteArray &)
+    {
+        QUrlQuery assign; assign.addQueryItem(u"category"_s, category); assign.addQueryItem(u"hashes"_s, hashes.join(u'|'));
+        command(u"torrents/setCategory"_s, assign);
+    }, true);
+}
+
+void Client::applyFilePriorities(const QString &hash, QMap<int, QStringList> priorities, const bool start)
+{
+    if (priorities.isEmpty())
+    {
+        if (start)
+        {
+            QUrlQuery form; form.addQueryItem(u"hashes"_s, hash);
+            command(u"torrents/start"_s, form);
+        }
+        return;
+    }
+    const auto first = priorities.cbegin();
+    QUrlQuery form;
+    form.addQueryItem(u"hash"_s, hash);
+    form.addQueryItem(u"id"_s, first.value().join(u'|'));
+    form.addQueryItem(u"priority"_s, QString::number(first.key()));
+    priorities.remove(first.key());
+    request(u"torrents/filePrio"_s, form, true, [this, hash, priorities, start](const QByteArray &)
+    { applyFilePriorities(hash, priorities, start); }, true);
 }

@@ -27,6 +27,9 @@
  */
 
 #pragma once
+#include <functional>
+#include <QVariant>
+class QMenu;
 
 #include <QHash>
 #include <QSet>
@@ -54,6 +57,8 @@ class PeerListWidget final : public PeerListView
     Q_DISABLE_COPY_MOVE(PeerListWidget)
 
 public:
+    using MenuHandler = std::function<void(const QString &, const QVariant &)>;
+    static QMenu *createContextMenu(QWidget *parent, bool selected, bool privateTorrent, bool checking, bool queued, const MenuHandler &handler);
     enum PeerListColumns
     {
         COUNTRY,

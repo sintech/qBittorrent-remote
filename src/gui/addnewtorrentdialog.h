@@ -34,7 +34,13 @@
 #include <QDialog>
 
 #include "base/path.h"
+#ifndef QBT_REMOTE_CLIENT
 #include "base/settingvalue.h"
+#else
+#include <QJsonObject>
+#include <QUrlQuery>
+#include <QMap>
+#endif
 #include "filterpatternformat.h"
 
 class LineEdit;
@@ -57,6 +63,17 @@ class AddNewTorrentDialog final : public QDialog
     Q_DISABLE_COPY_MOVE(AddNewTorrentDialog)
 
 public:
+#ifdef QBT_REMOTE_CLIENT
+    explicit AddNewTorrentDialog(const QString &source, const QJsonObject &preferences,
+        const QJsonObject &categories, QWidget *parent = nullptr, bool localFile = false);
+    ~AddNewTorrentDialog() override;
+    QUrlQuery parameters() const;
+    QString torrentHash() const;
+    QMap<int, QStringList> filePriorities() const;
+private:
+    Ui::AddNewTorrentDialog *m_ui = nullptr;
+    bool m_updatingPriorities = false;
+#else
     explicit AddNewTorrentDialog(const BitTorrent::TorrentDescriptor &torrentDescr
             , const BitTorrent::AddTorrentParams &inParams, QWidget *parent);
     ~AddNewTorrentDialog() override;
@@ -114,4 +131,5 @@ private:
     SettingValue<QByteArray> m_storeTreeHeaderState;
     SettingValue<QByteArray> m_storeSplitterState;
     SettingValue<FilterPatternFormat> m_storeFilterPatternFormat;
+#endif
 };

@@ -5,6 +5,8 @@
 
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QModelIndex>
+#include <QUrlQuery>
 #include "gui/properties/propertieswidget.h"
 
 class PropTabBar;
@@ -35,9 +37,12 @@ namespace Remote
 
     signals:
         void currentChanged(int index);
+        void commandRequested(const QString &method, const QUrlQuery &parameters);
         void openPathRequested(const QString &path);
 
     private:
+        void installContextMenus();
+        void setFilePriority(const QModelIndexList &rows, int priority);
         void showGeneral(const QJsonObject &properties);
         void showContent(const QJsonArray &files);
         SpeedWidget *m_speed = nullptr;
@@ -49,5 +54,6 @@ namespace Remote
         QStandardItemModel *m_files = nullptr;
         QJsonObject m_torrent;
         QStringList m_filePaths;
+        bool m_updatingFiles = false;
     };
 }

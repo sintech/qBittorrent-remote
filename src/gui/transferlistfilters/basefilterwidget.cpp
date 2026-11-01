@@ -28,6 +28,10 @@
  */
 
 #include "basefilterwidget.h"
+#include <QMenu>
+#include <QCoreApplication>
+#include "base/global.h"
+#include "gui/uithememanager.h"
 
 #ifndef QBT_REMOTE_CLIENT
 #include "base/bittorrent/session.h"
@@ -94,4 +98,26 @@ void BaseFilterWidget::toggleFilter(const bool checked)
         applyFilter(currentRow());
     else
         applyFilter(ALL_ROW);
+}
+
+QMenu *BaseFilterWidget::createTrackerContextMenu(QWidget *parent, bool normalItem, const std::function<void(const QString &)> &handler)
+{
+    QMenu *menu = new QMenu(parent);
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+
+    if (normalItem)
+    {
+        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-clear"_s, u"list-remove"_s), QCoreApplication::translate("TrackersFilterWidget", "Remove tracker")
+            , parent, [handler] { handler(u"onRemoveTrackerTriggered"_s); });
+        menu->addSeparator();
+    }
+
+    menu->addAction(UIThemeManager::instance()->getIcon(u"torrent-start"_s, u"media-playback-start"_s), QCoreApplication::translate("TrackersFilterWidget", "Start torrents")
+        , parent, [handler] { handler(u"startVisibleTorrents"_s); });
+    menu->addAction(UIThemeManager::instance()->getIcon(u"torrent-stop"_s, u"media-playback-pause"_s), QCoreApplication::translate("TrackersFilterWidget", "Stop torrents")
+        , parent, [handler] { handler(u"stopVisibleTorrents"_s); });
+    menu->addAction(UIThemeManager::instance()->getIcon(u"list-remove"_s), QCoreApplication::translate("TrackersFilterWidget", "Remove torrents")
+        , parent, [handler] { handler(u"deleteVisibleTorrents"_s); });
+
+    return menu;
 }

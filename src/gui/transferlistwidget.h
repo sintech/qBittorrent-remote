@@ -28,6 +28,11 @@
  */
 
 #pragma once
+#include <functional>
+#include <QSet>
+#include <QStringList>
+#include <QVariant>
+class QMenu;
 
 #include <functional>
 
@@ -60,6 +65,35 @@ class TransferListWidget final : public GUIApplicationComponent<QTreeView>
     Q_DISABLE_COPY_MOVE(TransferListWidget)
 
 public:
+    using MenuHandler = std::function<void(const QString &, const QVariant &)>;
+    struct MenuState
+    {
+        bool needsStop = false;
+        bool needsStart = false;
+        bool needsForce = false;
+        bool needsPreview = false;
+        bool allSameSuperSeeding = true;
+        bool superSeedingMode = false;
+        bool allSameSequentialDownloadMode = true;
+        bool allSamePrioFirstlast = true;
+        bool sequentialDownloadMode = false;
+        bool prioritizeFirstLast = false;
+        bool oneHasMetadata = false;
+        bool oneNotFinished = false;
+        bool allSameCategory = true;
+        bool allSameAutoTMM = true;
+        bool firstAutoTMM = false;
+        bool hasInfohashV1 = false;
+        bool hasInfohashV2 = false;
+        bool oneCanForceReannounce = false;
+        QString firstCategory;
+        QStringList categories, tags;
+        QSet<QString> tagsInAny, tagsInAll;
+        int selectionCount = 0;
+        bool queueing = false;
+    };
+    static QMenu *createContextMenu(QWidget *parent, const MenuState &state, const MenuHandler &handler);
+
     enum class Command { Start, Stop, ForceStart, Remove, Recheck, Reannounce, QueueUp, QueueDown, QueueTop, QueueBottom, OpenFolder };
     static QAction *createAction(Command command, QObject *parent);
     void displayColumnHeaderMenu();

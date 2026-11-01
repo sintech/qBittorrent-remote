@@ -25,6 +25,7 @@ namespace Remote
         QString tracker() const;
     signals:
         void filtersChanged();
+        void contextCommand(const QString &kind, const QString &operation, const QString &value);
     private:
         QListWidget *m_status = nullptr;
         QTreeView *m_categories = nullptr;

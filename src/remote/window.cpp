@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "window.h"
+#include "gui/addnewtorrentdialog.h"
+#include "gui/trackerentriesdialog.h"
 
 #include <QAction>
 #include <QApplication>
@@ -70,6 +72,11 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     profilesAction->setObjectName(u"actionConnectionProfiles"_s);
     m_ui->menuOptions->insertAction(m_ui->actionOptions, profilesAction);
     connect(profilesAction, &QAction::triggered, this, &Window::showProfilesDialog);
+    auto *addOptions = m_ui->menuOptions->addAction(QCoreApplication::translate("OptionsDialog", "Display &torrent content and some options"));
+    addOptions->setObjectName(u"actionShowAddOptions"_s);
+    addOptions->setCheckable(true);
+    addOptions->setChecked(!QSettings().value(u"remote/addDialog/skip"_s, false).toBool());
+    connect(addOptions, &QAction::toggled, this, [](bool checked) { QSettings().setValue(u"remote/addDialog/skip"_s, !checked); });
     m_ui->menuAutoShutdownOnDownloadsCompletion->setEnabled(false);
     m_ui->menuLog->setEnabled(false);
     auto *languageMenu = m_ui->menuView->addMenu(tr("Language"));
@@ -168,6 +175,9 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     connect(&m_client, &Client::syncReceived, this, &Window::applySync);
     connect(&m_client, &Client::reset, this, [this]
     {
+        for (auto *menu : findChildren<QMenu *>()) menu->close();
+        for (auto *dialog : findChildren<AddNewTorrentDialog *>()) dialog->reject();
+        for (auto *dialog : findChildren<TrackerEntriesDialog *>()) dialog->reject();
         ++m_detailGeneration;
         m_model.clear();
         m_categories = {};
@@ -189,6 +199,8 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
             m_sidebar->tag(), m_filterColumn->currentData().toInt(), m_sidebar->tracker());
     });
     connect(m_properties, &Properties::openPathRequested, this, &Window::openRemotePath);
+    connect(m_sidebar, &Sidebar::contextCommand, this, &Window::sidebarCommand);
+    connect(m_properties, &Properties::commandRequested, &m_client, &Client::command);
     connect(m_properties, &Properties::currentChanged, this, [this] { refreshDetails(); });
     connect(m_filterColumn, &QComboBox::currentIndexChanged, this, [this] { updateFilters(); });
     m_detailsTimer.setInterval(5000);
@@ -300,6 +312,13 @@ void Window::editProfiles(const bool offerConnection)
             setWindowTitle(u"qBittorrent Remote — %1 (%2)"_s.arg(active->name, active->url.host()));
         }
     }
+}
+
+void Window::startLastProfile()
+{
+    const QString id = QSettings().value(u"remote/selectedProfile"_s).toString();
+    if (!id.isEmpty() && connectProfile(id)) return;
+    showConnectionDialog();
 }
 
 void Window::showConnectionDialog()
@@ -468,13 +487,7 @@ void Window::addFiles()
     const auto paths = QFileDialog::getOpenFileNames(this, tr("Add Torrent File"), {}, tr("Torrent files (*.torrent)"));
     if (paths.isEmpty())
         return;
-    bool accepted = false;
-    const QString savePath = QInputDialog::getText(this, tr("Server download directory"),
-        tr("Server path (leave empty for the server default):"), QLineEdit::Normal, {}, &accepted);
-    if (!accepted)
-        return;
-    for (const auto &path : paths)
-        m_client.addTorrentFile(path, savePath);
+    for (const auto &path : paths) showAddDialog(path, true);
 }
 
 void Window::addLinks()
@@ -482,45 +495,37 @@ void Window::addLinks()
     DownloadFromURLDialog dialog(this);
     connect(&dialog, &DownloadFromURLDialog::urlsReadyToBeDownloaded, this, [this](const QStringList &urls)
     {
-        QUrlQuery form;
-        form.addQueryItem(u"urls"_s, urls.join(u'\n'));
-        m_client.command(u"torrents/add"_s, form);
+        for (const auto &url : urls) showAddDialog(url, false);
     });
     dialog.exec();
 }
 
-void Window::showContextMenu(const QPoint &position)
+void Window::showAddDialog(const QString &source, bool file)
 {
-    if (!m_client.isConnected() || selectedHashes().isEmpty())
-        return;
-    QMenu menu(this);
-    using Command = TransferListWidget::Command;
-    const auto add = [this, &menu](Command command, const auto &callback)
+    const auto server = m_client.serverUrl();
+    m_client.get(u"app/preferences"_s, {}, [this, source, file, server](const QByteArray &body)
     {
-        auto *action = TransferListWidget::createAction(command, &menu);
-        connect(action, &QAction::triggered, this, callback);
-        menu.addAction(action);
-    };
-    add(Command::Start, [this] { runCommand(u"torrents/start"_s); });
-    add(Command::Stop, [this] { runCommand(u"torrents/stop"_s); });
-    add(Command::ForceStart, [this]
-    {
-        QUrlQuery form;
-        form.addQueryItem(u"value"_s, u"true"_s);
-        runCommand(u"torrents/setForceStart"_s, form);
+        if (server != m_client.serverUrl()) return;
+        const auto document = QJsonDocument::fromJson(body);
+        if (!document.isObject()) { QMessageBox::warning(this, tr("Add torrent"), tr("Could not load server download defaults.")); return; }
+        auto preferences = document.object();
+        preferences.insert(u"remote_server"_s, server.toString());
+        auto *dialog = new AddNewTorrentDialog(source, preferences, m_categories, this, file);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        connect(dialog, &QDialog::accepted, this, [this, dialog, source, file, server]
+        {
+            if (!m_client.isConnected() || server != m_client.serverUrl()) return;
+            if (auto *action = findChild<QAction *>(u"actionShowAddOptions"_s)) action->setChecked(!QSettings().value(u"remote/addDialog/skip"_s, false).toBool());
+            auto form = dialog->parameters();
+            if (file) m_client.addTorrentFile(source, form, dialog->torrentHash(), dialog->filePriorities());
+            else { form.addQueryItem(u"urls"_s, source); m_client.command(u"torrents/add"_s, form); }
+        });
+        if ((!file || !dialog->torrentHash().isEmpty()) && QSettings().value(u"remote/addDialog/skip"_s, false).toBool())
+            QTimer::singleShot(0, dialog, &QDialog::accept);
+        else dialog->open();
     });
-    menu.addSeparator();
-    add(Command::Remove, [this] { removeSelected(); });
-    menu.addSeparator();
-    add(Command::Recheck, [this] { runCommand(u"torrents/recheck"_s); });
-    add(Command::Reannounce, [this] { runCommand(u"torrents/reannounce"_s); });
-    menu.addSeparator();
-    auto *openFolder = TransferListWidget::createAction(Command::OpenFolder, &menu);
-    openFolder->setEnabled(selectedHashes().size() == 1 && !m_activeProfile.mappings.isEmpty());
-    connect(openFolder, &QAction::triggered, this, &Window::openSelectedFolder);
-    menu.addAction(openFolder);
-    menu.exec(m_table->viewport()->mapToGlobal(position));
 }
+
 
 void Window::refreshDetails()
 {

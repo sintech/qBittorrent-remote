@@ -71,6 +71,11 @@ public:
     Mode mode() const;
     void setMode(Mode mode);
 
+    // Server paths must bypass local filesystem validation and completion.
+    void setServerPathMode();
+    QString pathText() const;
+    void setPathText(const QString &text);
+
     Path selectedPath() const;
     void setSelectedPath(const Path &val);
 

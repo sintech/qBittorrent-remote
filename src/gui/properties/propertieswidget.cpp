@@ -167,7 +167,7 @@ PropertiesWidget::PropertiesWidget(QWidget *parent)
     configure();
     connect(Preferences::instance(), &Preferences::changed, this, &PropertiesWidget::configure);
 #else
-    connect(m_tabBar, &PropTabBar::visibilityToggled, m_ui->stackedProperties, &QWidget::setVisible);
+    connect(m_tabBar, &PropTabBar::visibilityToggled, this, &PropertiesWidget::setVisibility);
     m_speedWidget = new SpeedWidget(static_cast<QWidget *>(this));
     m_ui->speedLayout->addWidget(m_speedWidget);
 #endif
@@ -196,41 +196,6 @@ void PropertiesWidget::showPiecesDownloaded(bool show)
     m_ui->labelProgressVal->setVisible(show);
     if (show || !m_piecesAvailability->isVisible())
         m_ui->lineBelowBars->setVisible(show);
-}
-
-void PropertiesWidget::setVisibility(const bool visible)
-{
-    if (!visible && (m_state == VISIBLE))
-    {
-        const int tabBarHeight = m_tabBar->geometry().height(); // take height before hiding
-        auto *hSplitter = static_cast<QSplitter *>(parentWidget());
-        m_ui->stackedProperties->setVisible(false);
-        m_slideSizes = hSplitter->sizes();
-        hSplitter->handle(1)->setVisible(false);
-        hSplitter->handle(1)->setDisabled(true);
-        m_handleWidth = hSplitter->handleWidth();
-        hSplitter->setHandleWidth(0);
-        const QList<int> sizes {(hSplitter->geometry().height() - tabBarHeight), tabBarHeight};
-        hSplitter->setSizes(sizes);
-        setMaximumSize(maximumSize().width(), tabBarHeight);
-        m_state = REDUCED;
-        return;
-    }
-
-    if (visible && (m_state == REDUCED))
-    {
-        m_ui->stackedProperties->setVisible(true);
-        auto *hSplitter = static_cast<QSplitter *>(parentWidget());
-        if (m_handleWidth != -1)
-            hSplitter->setHandleWidth(m_handleWidth);
-        hSplitter->handle(1)->setDisabled(false);
-        hSplitter->handle(1)->setVisible(true);
-        hSplitter->setSizes(m_slideSizes);
-        m_state = VISIBLE;
-        setMaximumSize(maximumSize().width(), QWIDGETSIZE_MAX);
-        // Force refresh
-        loadDynamicData();
-    }
 }
 
 void PropertiesWidget::clear()
@@ -579,21 +544,13 @@ void PropertiesWidget::displayWebSeedListMenu()
 
     const QModelIndexList rows = m_ui->listWebSeeds->selectionModel()->selectedRows();
 
-    QMenu *menu = new QMenu(this);
-    menu->setAttribute(Qt::WA_DeleteOnClose);
-
-    menu->addAction(UIThemeManager::instance()->getIcon(u"list-add"_s), tr("Add web seed..."), this, &PropertiesWidget::askWebSeed);
-
-    if (!rows.isEmpty())
+    QMenu *menu = createContextMenu(this, !rows.isEmpty(), [this](const QString &command, const QVariant &)
     {
-        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-clear"_s, u"list-remove"_s), tr("Remove web seed")
-            , this, &PropertiesWidget::deleteSelectedUrlSeeds);
-        menu->addSeparator();
-        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-copy"_s), tr("Copy web seed URL")
-            , this, &PropertiesWidget::copySelectedWebSeedsToClipboard);
-        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-rename"_s), tr("Edit web seed URL...")
-            , this, &PropertiesWidget::editWebSeed);
-    }
+        if (command == u"add") askWebSeed();
+        else if (command == u"remove") deleteSelectedUrlSeeds();
+        else if (command == u"copy") copySelectedWebSeedsToClipboard();
+        else if (command == u"edit") editWebSeed();
+    });
 
     menu->popup(QCursor::pos());
 }
@@ -715,3 +672,68 @@ void PropertiesWidget::editWebSeed()
 }
 
 #endif
+
+void PropertiesWidget::setVisibility(const bool visible)
+{
+    auto *splitter = qobject_cast<QSplitter *>(parentWidget());
+    if (!splitter || splitter->count() < 2)
+    {
+        m_ui->stackedProperties->setVisible(visible);
+        return;
+    }
+    if (!visible && (m_state == VISIBLE))
+    {
+        const int tabBarHeight = m_tabBar->geometry().height(); // take height before hiding
+        auto *hSplitter = static_cast<QSplitter *>(parentWidget());
+        m_ui->stackedProperties->setVisible(false);
+        m_slideSizes = hSplitter->sizes();
+        hSplitter->handle(1)->setVisible(false);
+        hSplitter->handle(1)->setDisabled(true);
+        m_handleWidth = hSplitter->handleWidth();
+        hSplitter->setHandleWidth(0);
+        const QList<int> sizes {(hSplitter->geometry().height() - tabBarHeight), tabBarHeight};
+        hSplitter->setSizes(sizes);
+        setMaximumSize(maximumSize().width(), tabBarHeight);
+        m_state = REDUCED;
+        return;
+    }
+
+    if (visible && (m_state == REDUCED))
+    {
+        m_ui->stackedProperties->setVisible(true);
+        auto *hSplitter = static_cast<QSplitter *>(parentWidget());
+        if (m_handleWidth != -1)
+            hSplitter->setHandleWidth(m_handleWidth);
+        hSplitter->handle(1)->setDisabled(false);
+        hSplitter->handle(1)->setVisible(true);
+        hSplitter->setSizes(m_slideSizes);
+        m_state = VISIBLE;
+        setMaximumSize(maximumSize().width(), QWIDGETSIZE_MAX);
+        // Force refresh
+#ifndef QBT_REMOTE_CLIENT
+        loadDynamicData();
+#endif
+    }
+}
+
+
+QMenu *PropertiesWidget::createContextMenu(QWidget *parent, bool selected, const MenuHandler &handler)
+{
+    QMenu *menu = new QMenu(parent);
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+
+    menu->addAction(UIThemeManager::instance()->getIcon(u"list-add"_s), tr("Add web seed..."), parent, [handler] { handler(u"add"_s, {}); });
+
+    if (selected)
+    {
+        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-clear"_s, u"list-remove"_s), tr("Remove web seed")
+            , parent, [handler] { handler(u"remove"_s, {}); });
+        menu->addSeparator();
+        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-copy"_s), tr("Copy web seed URL")
+            , parent, [handler] { handler(u"copy"_s, {}); });
+        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-rename"_s), tr("Edit web seed URL...")
+            , parent, [handler] { handler(u"edit"_s, {}); });
+    }
+
+    return menu;
+}

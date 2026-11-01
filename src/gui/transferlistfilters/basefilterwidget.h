@@ -28,6 +28,8 @@
  */
 
 #pragma once
+#include <functional>
+class QMenu;
 
 #include <QtContainerFwd>
 #include <QListWidget>
@@ -42,6 +44,8 @@ class BaseFilterWidget : public QListWidget
     Q_DISABLE_COPY_MOVE(BaseFilterWidget)
 
 public:
+    static QMenu *createTrackerContextMenu(QWidget *parent, bool normalItem, const std::function<void(const QString &)> &handler);
+
     BaseFilterWidget(QWidget *parent, TransferListWidget *transferList);
 
     QSize sizeHint() const override;

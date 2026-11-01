@@ -28,6 +28,8 @@
  */
 
 #pragma once
+#include <functional>
+class QMenu;
 
 #include <bitset>
 
@@ -45,6 +47,9 @@ class StatusFilterWidget final : public BaseFilterWidget
     Q_DISABLE_COPY_MOVE(StatusFilterWidget)
 
 public:
+    using MenuHandler = std::function<void(const QString &)>;
+    static QMenu *createContextMenu(QWidget *parent, bool normalItem, const MenuHandler &handler);
+
     StatusFilterWidget(QWidget *parent, TransferListWidget *transferList);
 #ifndef QBT_REMOTE_CLIENT
     ~StatusFilterWidget() override;

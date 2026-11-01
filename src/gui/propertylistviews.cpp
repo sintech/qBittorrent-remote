@@ -37,6 +37,7 @@
 #include <QSettings>
 #include <QSortFilterProxyModel>
 #include <QStandardItemModel>
+#include <QTimer>
 
 #include "base/global.h"
 #include "properties/peerlistsortmodel.h"
@@ -44,11 +45,48 @@
 #include "trackerlist/trackerlistitemdelegate.h"
 #include "torrentcontentitemdelegate.h"
 
+PropertyListView::~PropertyListView() { saveHeaderSettings(); }
+
+void PropertyListView::saveHeaderSettings() const
+{
+    if (m_settingsKey.isEmpty()) return;
+    QSettings settings;
+    settings.setValue(m_settingsKey, header()->saveState());
+    QStringList hidden;
+    for (int column : m_userHidden) hidden.append(QString::number(column));
+    settings.setValue(m_settingsKey + QStringLiteral("/hidden"), hidden);
+}
+
+void PropertyListView::setInternalColumn(const int column)
+{
+    m_internalColumns.insert(column);
+    setColumnHidden(column, true);
+}
+
+void PropertyListView::setColumnAvailable(const int column, const bool available)
+{
+    if (available) m_unavailableColumns.remove(column);
+    else m_unavailableColumns.insert(column);
+    setColumnHidden(column, !available || m_internalColumns.contains(column) || m_userHidden.contains(column));
+}
+
 void PropertyListView::setHeaderSettingsKey(const QString &key)
 {
     m_settingsKey = key;
-    header()->restoreState(QSettings().value(key).toByteArray());
-    const auto save = [this] { QSettings().setValue(m_settingsKey, header()->saveState()); };
+    QSettings settings;
+    header()->restoreState(settings.value(key).toByteArray());
+    if (settings.contains(key + u"/hidden"))
+    {
+        for (const auto &column : settings.value(key + u"/hidden").toStringList()) m_userHidden.insert(column.toInt());
+    }
+    else
+    {
+        for (int column = 0; column < model()->columnCount(); ++column)
+            if (isColumnHidden(column) && !m_internalColumns.contains(column)) m_userHidden.insert(column);
+    }
+    for (int column = 0; column < model()->columnCount(); ++column)
+        setColumnAvailable(column, !m_unavailableColumns.contains(column));
+    const auto save = [this] { QTimer::singleShot(0, this, &PropertyListView::saveHeaderSettings); };
     connect(header(), &QHeaderView::sectionMoved, this, save);
     connect(header(), &QHeaderView::sectionResized, this, save);
     connect(header(), &QHeaderView::sortIndicatorChanged, this, save);
@@ -60,15 +98,32 @@ void PropertyListView::installColumnMenu()
     connect(header(), &QWidget::customContextMenuRequested, this, [this](const QPoint &position)
     {
         QMenu menu(this);
+        menu.setTitle(QCoreApplication::translate("PeerListWidget", "Column visibility"));
         for (int column = 0; column < model()->columnCount(); ++column)
         {
+            if (m_internalColumns.contains(column) || m_unavailableColumns.contains(column)) continue;
             const auto label = model()->headerData(column, Qt::Horizontal).toString();
             if (label.isEmpty()) continue;
             auto *action = menu.addAction(label);
             action->setCheckable(true);
             action->setChecked(!isColumnHidden(column));
-            connect(action, &QAction::toggled, this, [this, column](bool visible) { setColumnHidden(column, !visible); });
+            connect(action, &QAction::toggled, this, [this, column](bool visible)
+            {
+                int count = 0;
+                for (int i = 0; i < model()->columnCount(); ++i) count += !isColumnHidden(i);
+                if (!visible && count <= 1) return;
+                if (visible) m_userHidden.remove(column); else m_userHidden.insert(column);
+                setColumnHidden(column, !visible);
+                if (visible && columnWidth(column) <= 5) resizeColumnToContents(column);
+                saveHeaderSettings();
+            });
         }
+        menu.addSeparator();
+        menu.addAction(QCoreApplication::translate("PeerListWidget", "Resize columns"), this, [this]
+        {
+            for (int i = 0; i < model()->columnCount(); ++i) if (!isColumnHidden(i)) resizeColumnToContents(i);
+            saveHeaderSettings();
+        });
         menu.exec(header()->mapToGlobal(position));
     });
 }
@@ -114,7 +169,8 @@ PeerListView::PeerListView(QWidget *parent) : PropertyListView(parent)
     proxy->setSourceModel(m_dataModel);
     proxy->setSortCaseSensitivity(Qt::CaseInsensitive);
     setModel(proxy);
-    hideColumn(IP_HIDDEN);
+    setInternalColumn(IP_HIDDEN);
+    m_dataModel->setHeaderData(IP_HIDDEN, Qt::Horizontal, QString());
     hideColumn(PEERID_CLIENT);
     setSortingEnabled(true);
 #ifdef QBT_REMOTE_CLIENT
@@ -182,6 +238,9 @@ TorrentContentView::TorrentContentView(QWidget *parent, const bool createModel) 
     setModel(proxy);
     setItemDelegate(new TorrentContentItemDelegate(this));
     header()->setStretchLastSection(false);
+    setColumnWidth(0, 360);
+    setColumnWidth(1, 100);
+    setColumnWidth(2, 100);
     installColumnMenu();
 }
 

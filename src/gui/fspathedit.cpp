@@ -39,7 +39,8 @@
 #include <QStyle>
 #include <QToolButton>
 
-#include "base/utils/fs.h"
+#include <QDir>
+#include <QLineEdit>
 #include "fspathedit_p.h"
 
 namespace
@@ -118,7 +119,7 @@ void FileSystemPathEdit::FileSystemPathEditPrivate::browseActionTriggered()
     const Path currentDirectory = (m_mode == FileSystemPathEdit::Mode::DirectoryOpen) || (m_mode == FileSystemPathEdit::Mode::DirectorySave)
             ? q->selectedPath()
             : q->selectedPath().parentPath();
-    const Path initialDirectory = currentDirectory.isAbsolute() ? currentDirectory : (Utils::Fs::homePath() / currentDirectory);
+    const Path initialDirectory = currentDirectory.isAbsolute() ? currentDirectory : (Path(QDir::homePath()) / currentDirectory);
 
     QString filter = q->fileNameFilter();
     QString newPath;
@@ -406,3 +407,15 @@ void FileSystemPathComboEdit::setEditWidgetText(const QString &text)
 {
     editWidget<WidgetType>()->setCurrentText(text);
 }
+
+void FileSystemPathEdit::setServerPathMode()
+{
+    Q_D(FileSystemPathEdit);
+    d->m_browseAction->setEnabled(false);
+    d->m_browseBtn->setVisible(false);
+    d->m_editor->setValidator(nullptr);
+    d->m_editor->widget()->setProperty("serverPath", true);
+    for (auto *line : d->m_editor->widget()->findChildren<QLineEdit *>()) line->setProperty("serverPath", true);
+}
+QString FileSystemPathEdit::pathText() const { return editWidgetText(); }
+void FileSystemPathEdit::setPathText(const QString &text) { setEditWidgetText(text); }

@@ -29,6 +29,9 @@
 #include "categoryfilterwidget.h"
 
 #include "gui/utils.h"
+#include <QMenu>
+#include "base/global.h"
+#include "gui/uithememanager.h"
 #ifndef QBT_REMOTE_CLIENT
 
 #include <QMenu>
@@ -103,33 +106,19 @@ void CategoryFilterWidget::onCurrentRowChanged(const QModelIndex &current, [[may
 
 void CategoryFilterWidget::showMenu()
 {
-    QMenu *menu = new QMenu(this);
-    menu->setAttribute(Qt::WA_DeleteOnClose);
-
-    menu->addAction(UIThemeManager::instance()->getIcon(u"list-add"_s), tr("Add category...")
-        , this, &CategoryFilterWidget::addCategory);
-
     const auto selectedRows = selectionModel()->selectedRows();
-    if (!selectedRows.empty() && !CategoryFilterModel::isSpecialItem(selectedRows.first()))
+    const bool normalItem = !selectedRows.empty() && !CategoryFilterModel::isSpecialItem(selectedRows.first());
+    auto *menu = createContextMenu(this, normalItem, [this](const QString &op)
     {
-        menu->addAction(UIThemeManager::instance()->getIcon(u"list-add"_s), tr("Add subcategory...")
-            , this, &CategoryFilterWidget::addSubcategory);
-        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-rename"_s, u"document-edit"_s), tr("Edit category...")
-            , this, &CategoryFilterWidget::editCategory);
-        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-clear"_s, u"list-remove"_s), tr("Remove category")
-            , this, &CategoryFilterWidget::removeCategory);
-    }
-
-    menu->addAction(UIThemeManager::instance()->getIcon(u"edit-clear"_s, u"list-remove"_s), tr("Remove unused categories")
-        , this, &CategoryFilterWidget::removeUnusedCategories);
-    menu->addSeparator();
-    menu->addAction(UIThemeManager::instance()->getIcon(u"torrent-start"_s, u"media-playback-start"_s), tr("Start torrents")
-        , this, &CategoryFilterWidget::actionStartTorrentsTriggered);
-    menu->addAction(UIThemeManager::instance()->getIcon(u"torrent-stop"_s, u"media-playback-pause"_s), tr("Stop torrents")
-        , this, &CategoryFilterWidget::actionStopTorrentsTriggered);
-    menu->addAction(UIThemeManager::instance()->getIcon(u"list-remove"_s), tr("Remove torrents")
-        , this, &CategoryFilterWidget::actionDeleteTorrentsTriggered);
-
+        if (op == u"addCategory") { addCategory(); }
+        else if (op == u"addSubcategory") { addSubcategory(); }
+        else if (op == u"editCategory") { editCategory(); }
+        else if (op == u"removeCategory") { removeCategory(); }
+        else if (op == u"removeUnusedCategories") { removeUnusedCategories(); }
+        else if (op == u"actionStartTorrentsTriggered") { actionStartTorrentsTriggered(); }
+        else if (op == u"actionStopTorrentsTriggered") { actionStopTorrentsTriggered(); }
+        else if (op == u"actionDeleteTorrentsTriggered") { actionDeleteTorrentsTriggered(); }
+    });
     menu->popup(QCursor::pos());
 }
 
@@ -261,4 +250,35 @@ void CategoryFilterWidget::adjustIndentation()
         resetIndentation();
     else
         setIndentation(0);
+}
+
+QMenu *CategoryFilterWidget::createContextMenu(QWidget *parent, bool normalItem, const MenuHandler &handler)
+{
+    QMenu *menu = new QMenu(parent);
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+
+    menu->addAction(UIThemeManager::instance()->getIcon(u"list-add"_s), tr("Add category...")
+        , parent, [handler] { handler(u"addCategory"_s); });
+
+    if (normalItem)
+    {
+        menu->addAction(UIThemeManager::instance()->getIcon(u"list-add"_s), tr("Add subcategory...")
+            , parent, [handler] { handler(u"addSubcategory"_s); });
+        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-rename"_s, u"document-edit"_s), tr("Edit category...")
+            , parent, [handler] { handler(u"editCategory"_s); });
+        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-clear"_s, u"list-remove"_s), tr("Remove category")
+            , parent, [handler] { handler(u"removeCategory"_s); });
+    }
+
+    menu->addAction(UIThemeManager::instance()->getIcon(u"edit-clear"_s, u"list-remove"_s), tr("Remove unused categories")
+        , parent, [handler] { handler(u"removeUnusedCategories"_s); });
+    menu->addSeparator();
+    menu->addAction(UIThemeManager::instance()->getIcon(u"torrent-start"_s, u"media-playback-start"_s), tr("Start torrents")
+        , parent, [handler] { handler(u"actionStartTorrentsTriggered"_s); });
+    menu->addAction(UIThemeManager::instance()->getIcon(u"torrent-stop"_s, u"media-playback-pause"_s), tr("Stop torrents")
+        , parent, [handler] { handler(u"actionStopTorrentsTriggered"_s); });
+    menu->addAction(UIThemeManager::instance()->getIcon(u"list-remove"_s), tr("Remove torrents")
+        , parent, [handler] { handler(u"actionDeleteTorrentsTriggered"_s); });
+
+    return menu;
 }

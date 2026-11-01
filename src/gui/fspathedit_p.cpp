@@ -220,7 +220,7 @@ void Private::FileLineEdit::keyPressEvent(QKeyEvent *e)
 {
     QLineEdit::keyPressEvent(e);
 
-    if ((e->key() == Qt::Key_Space) && (e->modifiers() == Qt::CTRL))
+    if (!property("serverPath").toBool() && (e->key() == Qt::Key_Space) && (e->modifiers() == Qt::CTRL))
     {
         if (!m_completerModel)
         {

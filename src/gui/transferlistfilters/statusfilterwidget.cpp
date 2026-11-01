@@ -34,6 +34,9 @@
 
 #include "base/global.h"
 #include "gui/uithememanager.h"
+#include <QMenu>
+#include "base/global.h"
+#include "gui/uithememanager.h"
 #ifndef QBT_REMOTE_CLIENT
 #include "base/bittorrent/session.h"
 #include "base/global.h"
@@ -207,16 +210,13 @@ void StatusFilterWidget::update(const QList<BitTorrent::Torrent *> &torrents)
 
 void StatusFilterWidget::showMenu()
 {
-    QMenu *menu = new QMenu(this);
-    menu->setAttribute(Qt::WA_DeleteOnClose);
-
-    menu->addAction(UIThemeManager::instance()->getIcon(u"torrent-start"_s, u"media-playback-start"_s), tr("Start torrents")
-        , transferList(), &TransferListWidget::startVisibleTorrents);
-    menu->addAction(UIThemeManager::instance()->getIcon(u"torrent-stop"_s, u"media-playback-pause"_s), tr("Stop torrents")
-        , transferList(), &TransferListWidget::stopVisibleTorrents);
-    menu->addAction(UIThemeManager::instance()->getIcon(u"list-remove"_s), tr("Remove torrents")
-        , transferList(), &TransferListWidget::deleteVisibleTorrents);
-
+    const bool normalItem = false;
+    auto *menu = createContextMenu(this, normalItem, [this](const QString &op)
+    {
+        if (op == u"startVisibleTorrents") { transferList()->startVisibleTorrents(); }
+        else if (op == u"stopVisibleTorrents") { transferList()->stopVisibleTorrents(); }
+        else if (op == u"deleteVisibleTorrents") { transferList()->deleteVisibleTorrents(); }
+    });
     menu->popup(QCursor::pos());
 }
 
@@ -301,4 +301,19 @@ QSize StatusFilterWidget::sizeHint() const
         sizeHintForColumn(0),
         // Height should be exactly the height of the content
         static_cast<int>((sizeHintForRow(0) + 2 * spacing()) * (numVisibleItems + 0.5))};
+}
+
+QMenu *StatusFilterWidget::createContextMenu(QWidget *parent, bool normalItem, const MenuHandler &handler)
+{
+    QMenu *menu = new QMenu(parent);
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+
+    menu->addAction(UIThemeManager::instance()->getIcon(u"torrent-start"_s, u"media-playback-start"_s), tr("Start torrents")
+        , parent, [handler] { handler(u"startVisibleTorrents"_s); });
+    menu->addAction(UIThemeManager::instance()->getIcon(u"torrent-stop"_s, u"media-playback-pause"_s), tr("Stop torrents")
+        , parent, [handler] { handler(u"stopVisibleTorrents"_s); });
+    menu->addAction(UIThemeManager::instance()->getIcon(u"list-remove"_s), tr("Remove torrents")
+        , parent, [handler] { handler(u"deleteVisibleTorrents"_s); });
+
+    return menu;
 }

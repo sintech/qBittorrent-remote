@@ -30,6 +30,7 @@
 #pragma once
 
 #include <QTreeView>
+#include <QSet>
 
 class QStandardItemModel;
 
@@ -39,11 +40,18 @@ class PropertyListView : public QTreeView
     Q_OBJECT
 public:
     using QTreeView::QTreeView;
+    ~PropertyListView() override;
     void setHeaderSettingsKey(const QString &key);
+    void saveHeaderSettings() const;
+    void setColumnAvailable(int column, bool available);
+    void setInternalColumn(int column);
 protected:
     void installColumnMenu();
 private:
     QString m_settingsKey;
+    QSet<int> m_internalColumns;
+    QSet<int> m_unavailableColumns;
+    QSet<int> m_userHidden;
 };
 
 class PeerListView : public PropertyListView

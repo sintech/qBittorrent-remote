@@ -538,23 +538,13 @@ void TrackersFilterWidget::handleFavicoDownloadFinished(const Net::DownloadResul
 
 void TrackersFilterWidget::showMenu()
 {
-    QMenu *menu = new QMenu(this);
-    menu->setAttribute(Qt::WA_DeleteOnClose);
-
-    if (currentRow() >= numSpecialRows())
+    auto *menu = createTrackerContextMenu(this, currentRow() >= numSpecialRows(), [this](const QString &op)
     {
-        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-clear"_s, u"list-remove"_s), tr("Remove tracker")
-            , this, &TrackersFilterWidget::onRemoveTrackerTriggered);
-        menu->addSeparator();
-    }
-
-    menu->addAction(UIThemeManager::instance()->getIcon(u"torrent-start"_s, u"media-playback-start"_s), tr("Start torrents")
-        , transferList(), &TransferListWidget::startVisibleTorrents);
-    menu->addAction(UIThemeManager::instance()->getIcon(u"torrent-stop"_s, u"media-playback-pause"_s), tr("Stop torrents")
-        , transferList(), &TransferListWidget::stopVisibleTorrents);
-    menu->addAction(UIThemeManager::instance()->getIcon(u"list-remove"_s), tr("Remove torrents")
-        , transferList(), &TransferListWidget::deleteVisibleTorrents);
-
+        if (op == u"onRemoveTrackerTriggered") onRemoveTrackerTriggered();
+        else if (op == u"startVisibleTorrents") transferList()->startVisibleTorrents();
+        else if (op == u"stopVisibleTorrents") transferList()->stopVisibleTorrents();
+        else if (op == u"deleteVisibleTorrents") transferList()->deleteVisibleTorrents();
+    });
     menu->popup(QCursor::pos());
 }
 

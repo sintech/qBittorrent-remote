@@ -28,6 +28,7 @@
  */
 
 #pragma once
+class QSortFilterProxyModel;
 
 #include <QLineEdit>
 
@@ -41,6 +42,7 @@ class LineEdit final : public QLineEdit
 
 public:
     explicit LineEdit(QWidget *parent = nullptr);
+    void installPatternMenu(QSortFilterProxyModel *filter, const QString &settingsKey);
 
 signals:
     void textUpdated(const QString &text);

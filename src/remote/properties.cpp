@@ -7,8 +7,10 @@
 #include <QHeaderView>
 #include <QJsonArray>
 #include <QLabel>
+#include <QMenu>
 #include <QPushButton>
 #include <QSettings>
+#include <QScopedValueRollback>
 #include <QStandardItemModel>
 #include <QTreeView>
 #include <QSet>
@@ -22,6 +24,7 @@
 #include "torrentmodel.h"
 #include "profiles.h"
 #include <QShortcut>
+#include <QTimer>
 #include "ui_propertieswidget.h"
 #include "gui/properties/peerlistwidget.h"
 #include "gui/trackerlist/trackerlistwidget.h"
@@ -146,23 +149,33 @@ Properties::Properties(QWidget *parent)
         shortcut->setContext(Qt::WidgetShortcut);
         connect(shortcut, &QShortcut::activated, this, [this, openFile] { openFile(m_ui->filesList->currentIndex()); });
     }
-    m_ui->selectAllButton->setEnabled(false);
-    m_ui->selectNoneButton->setEnabled(false);
+    const auto allFiles = [this]
+    {
+        QModelIndexList rows;
+        for (int row = 0; row < m_files->rowCount(); ++row) rows.append(m_files->index(row, 0));
+        return rows;
+    };
+    connect(m_ui->selectAllButton, &QPushButton::clicked, this, [this, allFiles] { setFilePriority(allFiles(), 1); });
+    connect(m_ui->selectNoneButton, &QPushButton::clicked, this, [this, allFiles] { setFilePriority(allFiles(), 0); });
+    connect(m_files, &QStandardItemModel::itemChanged, this, [this](QStandardItem *item)
+    {
+        if (!m_updatingFiles && item->column() == 0 && item->isCheckable()) setFilePriority({item->index()}, item->checkState() == Qt::Unchecked ? 0 : 1);
+    });
     m_tabs = m_tabBar;
     connect(m_tabs, &PropTabBar::tabChanged, this, [this](const int index)
     {
         QSettings().setValue(u"remote/propertiesTab"_s, index);
         emit currentChanged(index);
     });
-    connect(m_contentFilterLine, &LineEdit::textUpdated, this, [this](const QString &text)
-    {
-        auto *filter = static_cast<QSortFilterProxyModel *>(m_ui->filesList->model());
-        filter->setRecursiveFilteringEnabled(true);
-        filter->setFilterCaseSensitivity(Qt::CaseInsensitive);
-        filter->setFilterFixedString(text);
-    });
+    m_contentFilterLine->installPatternMenu(static_cast<QSortFilterProxyModel *>(m_ui->filesList->model()), u"remote/contentFilterFormat"_s);
     const int savedTab = QSettings().value(u"remote/propertiesTab"_s, 0).toInt();
-    m_tabs->setCurrentIndex((savedTab >= 0 && savedTab <= 5) ? savedTab : 0);
+    m_tabs->setCurrentIndex((savedTab >= -1 && savedTab <= 5) ? savedTab : 0);
+    connect(m_tabs, &PropTabBar::visibilityToggled, this, [](bool visible)
+    {
+        if (!visible) QSettings().setValue(u"remote/propertiesTab"_s, -1);
+    });
+    QTimer::singleShot(0, this, [this] { setVisibility(m_tabs->currentIndex() >= 0); });
+    installContextMenus();
     clear();
 }
 
@@ -180,6 +193,7 @@ bool Properties::isPanelVisible() const
 
 void Properties::clear()
 {
+    for (auto *menu : findChildren<QMenu *>()) menu->close();
     m_torrent = {};
     m_filePaths.clear();
     for (auto *label : findChildren<QLabel *>())
@@ -193,6 +207,8 @@ void Properties::clear()
     m_peers->sourceModel()->removeRows(0, m_peers->sourceModel()->rowCount());
     m_ui->listWebSeeds->clear();
     m_files->removeRows(0, m_files->rowCount());
+    m_ui->selectAllButton->setEnabled(false);
+    m_ui->selectNoneButton->setEnabled(false);
     m_ui->filesList->setProperty("initialized", false);
 }
 
@@ -246,7 +262,7 @@ void Properties::setData(const int tab, const QJsonDocument &data)
         auto *root = m_peers->sourceModel()->invisibleRootItem();
         const auto peers = data.object().value(u"peers"_s).toObject();
         QSet<QString> wanted;
-        m_peers->setColumnHidden(PeerListView::COUNTRY, !data.object().value(u"show_flags"_s).toBool());
+        m_peers->setColumnAvailable(PeerListView::COUNTRY, data.object().value(u"show_flags"_s).toBool());
         for (auto it = peers.begin(); it != peers.end(); ++it)
         {
             wanted.insert(it.key());
@@ -304,6 +320,7 @@ void Properties::setData(const int tab, const QJsonDocument &data)
 
 void Properties::showGeneral(const QJsonObject &properties)
 {
+    m_torrent.insert(u"private"_s, properties.value(u"is_private"_s));
     const auto text = [&properties](const QString &key) { return properties.value(key).toVariant().toString(); };
     const auto bytes = [&properties](const QString &key) { return TorrentModel::size(properties.value(key).toInteger()); };
     const auto rate = [&properties](const QString &key) { return TorrentModel::speed(properties.value(key).toInteger()); };
@@ -345,6 +362,7 @@ void Properties::showGeneral(const QJsonObject &properties)
 
 void Properties::showContent(const QJsonArray &files)
 {
+    const QScopedValueRollback<bool> updating(m_updatingFiles, true);
     m_filePaths.clear();
     QFileIconProvider icons;
     QSet<QString> wanted;
@@ -362,6 +380,7 @@ void Properties::showContent(const QJsonArray &files)
             auto *folder = ensureRow(parent, path, 6);
             setCell(folder, 0, parts[i]);
             folder->setIcon(icons.icon(QFileIconProvider::Folder));
+            folder->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable);
             parent = folder;
         }
         path += parts.last();
@@ -372,6 +391,8 @@ void Properties::showContent(const QJsonArray &files)
         const qint64 size = file.value(u"size"_s).toInteger();
         const qreal progress = file.value(u"progress"_s).toDouble();
         const int priority = file.value(u"priority"_s).toInt();
+        row->setData(file.value(u"index"_s).toInt(m_filePaths.size() - 1), Qt::UserRole + 2);
+        row->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable);
         row->setData(priority ? Qt::Checked : Qt::Unchecked, Qt::CheckStateRole);
         setCell(row, 1, TorrentModel::size(size), size);
         setCell(row, 2, u"%1%"_s.arg(progress * 100, 0, 'f', 1), progress * 100);
@@ -410,6 +431,8 @@ void Properties::showContent(const QJsonArray &files)
         }
     };
     aggregate(root);
+    m_ui->selectAllButton->setEnabled(!files.isEmpty());
+    m_ui->selectNoneButton->setEnabled(!files.isEmpty());
     const std::function<void(QStandardItem *)> align = [&](QStandardItem *parent)
     {
         for (int i = 0; i < parent->rowCount(); ++i)
@@ -421,9 +444,6 @@ void Properties::showContent(const QJsonArray &files)
     align(root);
     if (!m_ui->filesList->property("initialized").toBool())
     {
-        m_ui->filesList->setColumnWidth(0, 360);
-        m_ui->filesList->setColumnWidth(1, 100);
-        m_ui->filesList->setColumnWidth(2, 100);
         m_ui->filesList->expandAll();
         m_ui->filesList->setProperty("initialized", true);
     }
@@ -440,4 +460,20 @@ void Properties::pushStats(const QJsonObject &state)
 void Properties::resetSpeedHistory()
 {
     m_speed->clearHistory();
+}
+
+void Properties::setFilePriority(const QModelIndexList &rows, int priority)
+{
+    const auto hash = m_torrent.value(u"hash"_s).toString();
+    if (hash.isEmpty()) return;
+    QSet<QString> ids;
+    const std::function<void(const QModelIndex &)> collect = [&](const QModelIndex &index)
+    {
+        if (index.data(Qt::UserRole + 2).isValid()) ids.insert(index.data(Qt::UserRole + 2).toString());
+        for (int child = 0; child < m_files->rowCount(index); ++child) collect(m_files->index(child, 0, index));
+    };
+    for (const auto &row : rows) collect(row);
+    if (ids.isEmpty()) return;
+    QUrlQuery form; form.addQueryItem(u"hash"_s, hash); form.addQueryItem(u"id"_s, QStringList(ids.values()).join(u'|')); form.addQueryItem(u"priority"_s, QString::number(priority));
+    emit commandRequested(u"torrents/filePrio"_s, form);
 }

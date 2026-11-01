@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "sidebar.h"
+#include <QMenu>
 
 #include <QCoreApplication>
 #include <QListWidget>
@@ -59,6 +60,21 @@ Sidebar::Sidebar(QWidget *parent)
         connect(list, &QListWidget::currentRowChanged, this, [this] { emit filtersChanged(); });
     for (auto *tree : {m_categories, m_tags})
         connect(tree->selectionModel(), &QItemSelectionModel::currentChanged, this, [this] { emit filtersChanged(); });
+    const auto bind = [this](QWidget *view, const QString &kind, auto builder, auto selectedValue)
+    {
+        view->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(view, &QWidget::customContextMenuRequested, this, [this, view, kind, builder, selectedValue](const QPoint &point)
+        {
+            const QString value = selectedValue();
+            const bool normal = !value.isEmpty() && value != u"*" && value != u"__none__" && value != u"all";
+            auto *menu = builder(this, normal, [this, kind, value](const QString &op) { emit contextCommand(kind, op, value); });
+            menu->popup(view->mapToGlobal(point));
+        });
+    };
+    bind(m_status, u"status"_s, &StatusFilterWidget::createContextMenu, [this] { return state(); });
+    bind(m_categories, u"category"_s, &CategoryFilterWidget::createContextMenu, [this] { return category(); });
+    bind(m_tags, u"tag"_s, &TagFilterWidget::createContextMenu, [this] { return tag(); });
+    bind(m_trackers, u"tracker"_s, &BaseFilterWidget::createTrackerContextMenu, [this] { return tracker(); });
     m_status->setObjectName(u"remoteStatusFilter"_s);
 }
 

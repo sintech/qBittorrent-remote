@@ -28,11 +28,16 @@
  */
 
 #include "transferlistwidget.h"
+#include "tristateaction.h"
 
 #include <QHeaderView>
 #include <QMenu>
+#include <QSettings>
 #include "uithememanager.h"
 #include "transferlistdelegate.h"
+#include <QMenu>
+#include "base/global.h"
+#include "gui/uithememanager.h"
 #ifndef QBT_REMOTE_CLIENT
 
 #include <algorithm>
@@ -843,75 +848,8 @@ void TransferListWidget::clearSelectionTags()
 
 void TransferListWidget::displayListMenu()
 {
-    const QModelIndexList selectedIndexes = selectionModel()->selectedRows();
-    if (selectedIndexes.isEmpty())
-        return;
-
-    auto *listMenu = new QMenu(this);
-    listMenu->setAttribute(Qt::WA_DeleteOnClose);
-    listMenu->setToolTipsVisible(true);
-
-    // Create actions
-
-    auto *actionStart = createAction(Command::Start, listMenu);
-    connect(actionStart, &QAction::triggered, this, &TransferListWidget::startSelectedTorrents);
-    auto *actionStop = createAction(Command::Stop, listMenu);
-    connect(actionStop, &QAction::triggered, this, &TransferListWidget::stopSelectedTorrents);
-    auto *actionForceStart = createAction(Command::ForceStart, listMenu);
-    connect(actionForceStart, &QAction::triggered, this, &TransferListWidget::forceStartSelectedTorrents);
-    auto *actionDelete = createAction(Command::Remove, listMenu);
-    connect(actionDelete, &QAction::triggered, this, &TransferListWidget::softDeleteSelectedTorrents);
-    auto *actionPreviewFile = new QAction(UIThemeManager::instance()->getIcon(u"view-preview"_s), tr("Pre&view file..."), listMenu);
-    connect(actionPreviewFile, &QAction::triggered, this, &TransferListWidget::previewSelectedTorrents);
-    auto *actionTorrentOptions = new QAction(UIThemeManager::instance()->getIcon(u"configure"_s), tr("Torrent &options..."), listMenu);
-    connect(actionTorrentOptions, &QAction::triggered, this, &TransferListWidget::setTorrentOptions);
-    auto *actionOpenDestinationFolder = createAction(Command::OpenFolder, listMenu);
-    connect(actionOpenDestinationFolder, &QAction::triggered, this, &TransferListWidget::openSelectedTorrentsFolder);
-    auto *actionIncreaseQueuePos = createAction(Command::QueueUp, listMenu);
-    connect(actionIncreaseQueuePos, &QAction::triggered, this, &TransferListWidget::increaseQueuePosSelectedTorrents);
-    auto *actionDecreaseQueuePos = createAction(Command::QueueDown, listMenu);
-    connect(actionDecreaseQueuePos, &QAction::triggered, this, &TransferListWidget::decreaseQueuePosSelectedTorrents);
-    auto *actionTopQueuePos = createAction(Command::QueueTop, listMenu);
-    connect(actionTopQueuePos, &QAction::triggered, this, &TransferListWidget::topQueuePosSelectedTorrents);
-    auto *actionBottomQueuePos = createAction(Command::QueueBottom, listMenu);
-    connect(actionBottomQueuePos, &QAction::triggered, this, &TransferListWidget::bottomQueuePosSelectedTorrents);
-    auto *actionSetTorrentPath = new QAction(UIThemeManager::instance()->getIcon(u"set-location"_s, u"inode-directory"_s), tr("Set loc&ation..."), listMenu);
-    connect(actionSetTorrentPath, &QAction::triggered, this, &TransferListWidget::setSelectedTorrentsLocation);
-    auto *actionForceRecheck = createAction(Command::Recheck, listMenu);
-    connect(actionForceRecheck, &QAction::triggered, this, &TransferListWidget::recheckSelectedTorrents);
-    auto *actionForceReannounce = createAction(Command::Reannounce, listMenu);
-    connect(actionForceReannounce, &QAction::triggered, this, &TransferListWidget::reannounceSelectedTorrents);
-    auto *actionCopyMagnetLink = new QAction(UIThemeManager::instance()->getIcon(u"torrent-magnet"_s, u"kt-magnet"_s), tr("&Magnet link"), listMenu);
-    connect(actionCopyMagnetLink, &QAction::triggered, this, &TransferListWidget::copySelectedMagnetURIs);
-    auto *actionCopyID = new QAction(UIThemeManager::instance()->getIcon(u"help-about"_s, u"edit-copy"_s), tr("Torrent &ID"), listMenu);
-    connect(actionCopyID, &QAction::triggered, this, &TransferListWidget::copySelectedIDs);
-    auto *actionCopyComment = new QAction(UIThemeManager::instance()->getIcon(u"edit-copy"_s), tr("&Comment"), listMenu);
-    connect(actionCopyComment, &QAction::triggered, this, &TransferListWidget::copySelectedComments);
-    auto *actionCopyName = new QAction(UIThemeManager::instance()->getIcon(u"name"_s, u"edit-copy"_s), tr("&Name"), listMenu);
-    connect(actionCopyName, &QAction::triggered, this, &TransferListWidget::copySelectedNames);
-    auto *actionCopyHash1 = new QAction(UIThemeManager::instance()->getIcon(u"hash"_s, u"edit-copy"_s), tr("Info &hash v1"), listMenu);
-    connect(actionCopyHash1, &QAction::triggered, this, [this]() { copySelectedInfohashes(CopyInfohashPolicy::Version1); });
-    auto *actionCopyHash2 = new QAction(UIThemeManager::instance()->getIcon(u"hash"_s, u"edit-copy"_s), tr("Info h&ash v2"), listMenu);
-    connect(actionCopyHash2, &QAction::triggered, this, [this]() { copySelectedInfohashes(CopyInfohashPolicy::Version2); });
-    auto *actionCopyContentPath = new QAction(UIThemeManager::instance()->getIcon(u"directory"_s, u"edit-copy"_s), tr("Content &Path"), listMenu);
-    connect(actionCopyContentPath, &QAction::triggered, this, &TransferListWidget::copyContentPaths);
-    auto *actionSuperSeedingMode = new TriStateAction(tr("Super seeding mode"), listMenu);
-    connect(actionSuperSeedingMode, &QAction::triggered, this, &TransferListWidget::setSelectedTorrentsSuperSeeding);
-    auto *actionRename = new QAction(UIThemeManager::instance()->getIcon(u"edit-rename"_s), tr("Re&name..."), listMenu);
-    connect(actionRename, &QAction::triggered, this, &TransferListWidget::renameSelectedTorrent);
-    auto *actionSequentialDownload = new TriStateAction(tr("Download in sequential order"), listMenu);
-    connect(actionSequentialDownload, &QAction::triggered, this, &TransferListWidget::setSelectedTorrentsSequentialDownload);
-    auto *actionFirstLastPiecePrio = new TriStateAction(tr("Download first and last pieces first"), listMenu);
-    connect(actionFirstLastPiecePrio, &QAction::triggered, this, &TransferListWidget::setSelectedFirstLastPiecePrio);
-    auto *actionAutoTMM = new TriStateAction(tr("Automatic Torrent Management"), listMenu);
-    actionAutoTMM->setToolTip(tr("Automatic mode means that various torrent properties (e.g. save path) will be decided by the associated category"));
-    connect(actionAutoTMM, &QAction::triggered, this, &TransferListWidget::setSelectedAutoTMMEnabled);
-    auto *actionEditTracker = new QAction(UIThemeManager::instance()->getIcon(u"edit-rename"_s), tr("Edit trac&kers..."), listMenu);
-    connect(actionEditTracker, &QAction::triggered, this, &TransferListWidget::editTorrentTrackers);
-    auto *actionExportTorrent = new QAction(UIThemeManager::instance()->getIcon(u"edit-copy"_s), tr("E&xport .torrent..."), listMenu);
-    connect(actionExportTorrent, &QAction::triggered, this, &TransferListWidget::exportTorrent);
-    // End of actions
-
+    const auto selectedIndexes = selectionModel()->selectedRows();
+    if (selectedIndexes.isEmpty()) return;
     // Enable/disable stop/start action given the DL state
     bool needsStop = false, needsStart = false, needsForce = false, needsPreview = false;
     bool allSameSuperSeeding = true;
@@ -1034,155 +972,71 @@ void TransferListWidget::displayListMenu()
         }
     }
 
-    if (needsStart)
-        listMenu->addAction(actionStart);
-    if (needsStop)
-        listMenu->addAction(actionStop);
-    if (needsForce)
-        listMenu->addAction(actionForceStart);
-    listMenu->addSeparator();
-    listMenu->addAction(actionDelete);
-    listMenu->addSeparator();
-    listMenu->addAction(actionSetTorrentPath);
-    if (selectedIndexes.size() == 1)
-        listMenu->addAction(actionRename);
-    listMenu->addAction(actionEditTracker);
-
-    // Category Menu
-    QStringList categories = BitTorrent::Session::instance()->categories();
-    std::ranges::sort(categories, Utils::Compare::NaturalLessThan<Qt::CaseInsensitive>());
-
-    QMenu *categoryMenu = listMenu->addMenu(UIThemeManager::instance()->getIcon(u"view-categories"_s), tr("Categor&y"));
-
-    categoryMenu->addAction(UIThemeManager::instance()->getIcon(u"list-add"_s), tr("&New...", "New category...")
-        , this, &TransferListWidget::askNewCategoryForSelection);
-    categoryMenu->addAction(UIThemeManager::instance()->getIcon(u"edit-clear"_s), tr("&Reset", "Reset category")
-        , this, [this]() { setSelectionCategory(u""_s); });
-    categoryMenu->addSeparator();
-
-    for (const QString &category : asConst(categories))
+    MenuState state;
+    state.needsStop = needsStop;
+    state.needsStart = needsStart;
+    state.needsForce = needsForce;
+    state.needsPreview = needsPreview;
+    state.allSameSuperSeeding = allSameSuperSeeding;
+    state.superSeedingMode = superSeedingMode;
+    state.allSameSequentialDownloadMode = allSameSequentialDownloadMode;
+    state.allSamePrioFirstlast = allSamePrioFirstlast;
+    state.sequentialDownloadMode = sequentialDownloadMode;
+    state.prioritizeFirstLast = prioritizeFirstLast;
+    state.oneHasMetadata = oneHasMetadata;
+    state.oneNotFinished = oneNotFinished;
+    state.allSameCategory = allSameCategory;
+    state.allSameAutoTMM = allSameAutoTMM;
+    state.firstAutoTMM = firstAutoTMM;
+    state.hasInfohashV1 = hasInfohashV1;
+    state.hasInfohashV2 = hasInfohashV2;
+    state.oneCanForceReannounce = oneCanForceReannounce;
+    state.firstCategory = firstCategory;
+    for (const auto &tag : tagsInAny) state.tagsInAny.insert(tag.toString());
+    for (const auto &tag : tagsInAll) state.tagsInAll.insert(tag.toString());
+    state.categories = BitTorrent::Session::instance()->categories();
+    std::ranges::sort(state.categories, Utils::Compare::NaturalLessThan<Qt::CaseInsensitive>());
+    for (const auto &tag : BitTorrent::Session::instance()->tags()) state.tags.append(tag.toString());
+    state.selectionCount = selectedIndexes.size();
+    state.queueing = BitTorrent::Session::instance()->isQueueingSystemEnabled();
+    auto *menu = createContextMenu(this, state, [this](const QString &command, const QVariant &value)
     {
-        const QString escapedCategory = QString(category).replace(u'&', u"&&"_s);  // avoid '&' becomes accelerator key
-        QAction *categoryAction = categoryMenu->addAction(UIThemeManager::instance()->getIcon(u"view-categories"_s), escapedCategory
-            , this, [this, category]() { setSelectionCategory(category); });
-
-        if (allSameCategory && (category == firstCategory))
-        {
-            categoryAction->setCheckable(true);
-            categoryAction->setChecked(true);
-        }
-    }
-
-    // Tag Menu
-    QMenu *tagsMenu = listMenu->addMenu(UIThemeManager::instance()->getIcon(u"tags"_s, u"view-categories"_s), tr("Ta&gs"));
-
-    tagsMenu->addAction(UIThemeManager::instance()->getIcon(u"list-add"_s), tr("&Add...", "Add / assign multiple tags...")
-        , this, &TransferListWidget::askAddTagsForSelection);
-    tagsMenu->addAction(UIThemeManager::instance()->getIcon(u"edit-clear"_s), tr("&Remove All", "Remove all tags")
-        , this, [this]()
-    {
-        if (Preferences::instance()->confirmRemoveAllTags())
-            confirmRemoveAllTagsForSelection();
-        else
-            clearSelectionTags();
+        if (command == u"startSelectedTorrents") { startSelectedTorrents(); }
+        else if (command == u"stopSelectedTorrents") { stopSelectedTorrents(); }
+        else if (command == u"forceStartSelectedTorrents") { forceStartSelectedTorrents(); }
+        else if (command == u"softDeleteSelectedTorrents") { softDeleteSelectedTorrents(); }
+        else if (command == u"previewSelectedTorrents") { previewSelectedTorrents(); }
+        else if (command == u"setTorrentOptions") { setTorrentOptions(); }
+        else if (command == u"openSelectedTorrentsFolder") { openSelectedTorrentsFolder(); }
+        else if (command == u"increaseQueuePosSelectedTorrents") { increaseQueuePosSelectedTorrents(); }
+        else if (command == u"decreaseQueuePosSelectedTorrents") { decreaseQueuePosSelectedTorrents(); }
+        else if (command == u"topQueuePosSelectedTorrents") { topQueuePosSelectedTorrents(); }
+        else if (command == u"bottomQueuePosSelectedTorrents") { bottomQueuePosSelectedTorrents(); }
+        else if (command == u"setSelectedTorrentsLocation") { setSelectedTorrentsLocation(); }
+        else if (command == u"recheckSelectedTorrents") { recheckSelectedTorrents(); }
+        else if (command == u"reannounceSelectedTorrents") { reannounceSelectedTorrents(); }
+        else if (command == u"copySelectedMagnetURIs") { copySelectedMagnetURIs(); }
+        else if (command == u"copySelectedIDs") { copySelectedIDs(); }
+        else if (command == u"copySelectedComments") { copySelectedComments(); }
+        else if (command == u"copySelectedNames") { copySelectedNames(); }
+        else if (command == u"copyContentPaths") { copyContentPaths(); }
+        else if (command == u"setSelectedTorrentsSuperSeeding") { setSelectedTorrentsSuperSeeding(value.toBool()); }
+        else if (command == u"renameSelectedTorrent") { renameSelectedTorrent(); }
+        else if (command == u"setSelectedTorrentsSequentialDownload") { setSelectedTorrentsSequentialDownload(value.toBool()); }
+        else if (command == u"setSelectedFirstLastPiecePrio") { setSelectedFirstLastPiecePrio(value.toBool()); }
+        else if (command == u"setSelectedAutoTMMEnabled") { setSelectedAutoTMMEnabled(value.toBool()); }
+        else if (command == u"editTorrentTrackers") { editTorrentTrackers(); }
+        else if (command == u"exportTorrent") { exportTorrent(); }
+        else if (command == u"hash1") { copySelectedInfohashes(CopyInfohashPolicy::Version1); }
+        else if (command == u"hash2") { copySelectedInfohashes(CopyInfohashPolicy::Version2); }
+        else if (command == u"newCategory") { askNewCategoryForSelection(); }
+        else if (command == u"category") { setSelectionCategory(value.toString()); }
+        else if (command == u"addTags") { askAddTagsForSelection(); }
+        else if (command == u"clearTags") { if (Preferences::instance()->confirmRemoveAllTags()) confirmRemoveAllTagsForSelection(); else clearSelectionTags(); }
+        else if (command == u"addTag") { addSelectionTag(Tag(value.toString())); }
+        else if (command == u"removeTag") { removeSelectionTag(Tag(value.toString())); }
     });
-    tagsMenu->addSeparator();
-
-    const TagSet tags = BitTorrent::Session::instance()->tags();
-    for (const Tag &tag : asConst(tags))
-    {
-        auto *action = new TriStateAction(Utils::Gui::tagToWidgetText(tag), tagsMenu);
-        action->setCloseOnInteraction(false);
-
-        const Qt::CheckState initialState = tagsInAll.contains(tag) ? Qt::Checked
-                                            : tagsInAny.contains(tag) ? Qt::PartiallyChecked : Qt::Unchecked;
-        action->setCheckState(initialState);
-
-        connect(action, &QAction::toggled, this, [this, tag](const bool checked)
-        {
-            if (checked)
-                addSelectionTag(tag);
-            else
-                removeSelectionTag(tag);
-        });
-
-        tagsMenu->addAction(action);
-    }
-
-    actionAutoTMM->setCheckState(allSameAutoTMM
-        ? (firstAutoTMM ? Qt::Checked : Qt::Unchecked)
-        : Qt::PartiallyChecked);
-    listMenu->addAction(actionAutoTMM);
-
-    listMenu->addSeparator();
-    listMenu->addAction(actionTorrentOptions);
-    if (!oneNotFinished && oneHasMetadata)
-    {
-        actionSuperSeedingMode->setCheckState(allSameSuperSeeding
-            ? (superSeedingMode ? Qt::Checked : Qt::Unchecked)
-            : Qt::PartiallyChecked);
-        listMenu->addAction(actionSuperSeedingMode);
-    }
-    listMenu->addSeparator();
-    bool addedPreviewAction = false;
-    if (needsPreview)
-    {
-        listMenu->addAction(actionPreviewFile);
-        addedPreviewAction = true;
-    }
-    if (oneNotFinished)
-    {
-        actionSequentialDownload->setCheckState(allSameSequentialDownloadMode
-            ? (sequentialDownloadMode ? Qt::Checked : Qt::Unchecked)
-            : Qt::PartiallyChecked);
-        listMenu->addAction(actionSequentialDownload);
-
-        actionFirstLastPiecePrio->setCheckState(allSamePrioFirstlast
-            ? (prioritizeFirstLast ? Qt::Checked : Qt::Unchecked)
-            : Qt::PartiallyChecked);
-        listMenu->addAction(actionFirstLastPiecePrio);
-
-        addedPreviewAction = true;
-    }
-
-    if (addedPreviewAction)
-        listMenu->addSeparator();
-    if (oneHasMetadata)
-        listMenu->addAction(actionForceRecheck);
-    // We can not force reannounce torrents that are stopped/errored/checking/missing files/queued.
-    // We may already have the tracker list from magnet url. So we can force reannounce torrents without metadata anyway.
-    listMenu->addAction(actionForceReannounce);
-    actionForceReannounce->setEnabled(oneCanForceReannounce);
-    if (!oneCanForceReannounce)
-        actionForceReannounce->setToolTip(tr("Can not force reannounce if torrent is Stopped/Queued/Errored/Checking"));
-    listMenu->addSeparator();
-    listMenu->addAction(actionOpenDestinationFolder);
-    if (BitTorrent::Session::instance()->isQueueingSystemEnabled() && oneNotFinished)
-    {
-        listMenu->addSeparator();
-        QMenu *queueMenu = listMenu->addMenu(
-            UIThemeManager::instance()->getIcon(u"queued"_s), tr("&Queue"));
-        queueMenu->addAction(actionTopQueuePos);
-        queueMenu->addAction(actionIncreaseQueuePos);
-        queueMenu->addAction(actionDecreaseQueuePos);
-        queueMenu->addAction(actionBottomQueuePos);
-    }
-
-    QMenu *copySubMenu = listMenu->addMenu(UIThemeManager::instance()->getIcon(u"edit-copy"_s), tr("&Copy"));
-    copySubMenu->addAction(actionCopyName);
-    copySubMenu->addAction(actionCopyHash1);
-    actionCopyHash1->setEnabled(hasInfohashV1);
-    copySubMenu->addAction(actionCopyHash2);
-    actionCopyHash2->setEnabled(hasInfohashV2);
-    copySubMenu->addAction(actionCopyMagnetLink);
-    copySubMenu->addAction(actionCopyID);
-    copySubMenu->addAction(actionCopyComment);
-    copySubMenu->addAction(actionCopyContentPath);
-
-    actionExportTorrent->setToolTip(tr("Exported torrent is not necessarily the same as the imported"));
-    listMenu->addAction(actionExportTorrent);
-
-    listMenu->popup(QCursor::pos());
+    menu->popup(QCursor::pos());
 }
 
 void TransferListWidget::currentChanged(const QModelIndex &current, const QModelIndex &previous)
@@ -1506,6 +1360,8 @@ void TransferListWidget::displayColumnHeaderMenu()
 
 #ifndef QBT_REMOTE_CLIENT
             saveSettings();
+#else
+            QSettings().setValue(QStringLiteral("remote/nativeHeader"), header()->saveState());
 #endif
         });
         action->setCheckable(true);
@@ -1529,4 +1385,232 @@ void TransferListWidget::displayColumnHeaderMenu()
     resizeAction->setToolTip(tr("Resize all non-hidden columns to the size of their contents"));
 
     menu->popup(QCursor::pos());
+}
+
+QMenu *TransferListWidget::createContextMenu(QWidget *parent, const MenuState &state, const MenuHandler &handler)
+{
+    const bool needsStop = state.needsStop;
+    const bool needsStart = state.needsStart;
+    const bool needsForce = state.needsForce;
+    const bool needsPreview = state.needsPreview;
+    const bool allSameSuperSeeding = state.allSameSuperSeeding;
+    const bool superSeedingMode = state.superSeedingMode;
+    const bool allSameSequentialDownloadMode = state.allSameSequentialDownloadMode;
+    const bool allSamePrioFirstlast = state.allSamePrioFirstlast;
+    const bool sequentialDownloadMode = state.sequentialDownloadMode;
+    const bool prioritizeFirstLast = state.prioritizeFirstLast;
+    const bool oneHasMetadata = state.oneHasMetadata;
+    const bool oneNotFinished = state.oneNotFinished;
+    const bool allSameCategory = state.allSameCategory;
+    const bool allSameAutoTMM = state.allSameAutoTMM;
+    const bool firstAutoTMM = state.firstAutoTMM;
+    const bool hasInfohashV1 = state.hasInfohashV1;
+    const bool hasInfohashV2 = state.hasInfohashV2;
+    const bool oneCanForceReannounce = state.oneCanForceReannounce;
+    const auto &firstCategory = state.firstCategory;
+    const auto &tagsInAny = state.tagsInAny;
+    const auto &tagsInAll = state.tagsInAll;
+    auto *listMenu = new QMenu(parent);
+    listMenu->setAttribute(Qt::WA_DeleteOnClose);
+    listMenu->setToolTipsVisible(true);
+
+    // Create actions
+
+    auto *actionStart = createAction(Command::Start, listMenu);
+    connect(actionStart, &QAction::triggered, parent, [handler] { handler(u"startSelectedTorrents"_s, {}); });
+    auto *actionStop = createAction(Command::Stop, listMenu);
+    connect(actionStop, &QAction::triggered, parent, [handler] { handler(u"stopSelectedTorrents"_s, {}); });
+    auto *actionForceStart = createAction(Command::ForceStart, listMenu);
+    connect(actionForceStart, &QAction::triggered, parent, [handler] { handler(u"forceStartSelectedTorrents"_s, {}); });
+    auto *actionDelete = createAction(Command::Remove, listMenu);
+    connect(actionDelete, &QAction::triggered, parent, [handler] { handler(u"softDeleteSelectedTorrents"_s, {}); });
+    auto *actionPreviewFile = new QAction(UIThemeManager::instance()->getIcon(u"view-preview"_s), tr("Pre&view file..."), listMenu);
+    connect(actionPreviewFile, &QAction::triggered, parent, [handler] { handler(u"previewSelectedTorrents"_s, {}); });
+    auto *actionTorrentOptions = new QAction(UIThemeManager::instance()->getIcon(u"configure"_s), tr("Torrent &options..."), listMenu);
+    connect(actionTorrentOptions, &QAction::triggered, parent, [handler] { handler(u"setTorrentOptions"_s, {}); });
+    auto *actionOpenDestinationFolder = createAction(Command::OpenFolder, listMenu);
+    connect(actionOpenDestinationFolder, &QAction::triggered, parent, [handler] { handler(u"openSelectedTorrentsFolder"_s, {}); });
+    auto *actionIncreaseQueuePos = createAction(Command::QueueUp, listMenu);
+    connect(actionIncreaseQueuePos, &QAction::triggered, parent, [handler] { handler(u"increaseQueuePosSelectedTorrents"_s, {}); });
+    auto *actionDecreaseQueuePos = createAction(Command::QueueDown, listMenu);
+    connect(actionDecreaseQueuePos, &QAction::triggered, parent, [handler] { handler(u"decreaseQueuePosSelectedTorrents"_s, {}); });
+    auto *actionTopQueuePos = createAction(Command::QueueTop, listMenu);
+    connect(actionTopQueuePos, &QAction::triggered, parent, [handler] { handler(u"topQueuePosSelectedTorrents"_s, {}); });
+    auto *actionBottomQueuePos = createAction(Command::QueueBottom, listMenu);
+    connect(actionBottomQueuePos, &QAction::triggered, parent, [handler] { handler(u"bottomQueuePosSelectedTorrents"_s, {}); });
+    auto *actionSetTorrentPath = new QAction(UIThemeManager::instance()->getIcon(u"set-location"_s, u"inode-directory"_s), tr("Set loc&ation..."), listMenu);
+    connect(actionSetTorrentPath, &QAction::triggered, parent, [handler] { handler(u"setSelectedTorrentsLocation"_s, {}); });
+    auto *actionForceRecheck = createAction(Command::Recheck, listMenu);
+    connect(actionForceRecheck, &QAction::triggered, parent, [handler] { handler(u"recheckSelectedTorrents"_s, {}); });
+    auto *actionForceReannounce = createAction(Command::Reannounce, listMenu);
+    connect(actionForceReannounce, &QAction::triggered, parent, [handler] { handler(u"reannounceSelectedTorrents"_s, {}); });
+    auto *actionCopyMagnetLink = new QAction(UIThemeManager::instance()->getIcon(u"torrent-magnet"_s, u"kt-magnet"_s), tr("&Magnet link"), listMenu);
+    connect(actionCopyMagnetLink, &QAction::triggered, parent, [handler] { handler(u"copySelectedMagnetURIs"_s, {}); });
+    auto *actionCopyID = new QAction(UIThemeManager::instance()->getIcon(u"help-about"_s, u"edit-copy"_s), tr("Torrent &ID"), listMenu);
+    connect(actionCopyID, &QAction::triggered, parent, [handler] { handler(u"copySelectedIDs"_s, {}); });
+    auto *actionCopyComment = new QAction(UIThemeManager::instance()->getIcon(u"edit-copy"_s), tr("&Comment"), listMenu);
+    connect(actionCopyComment, &QAction::triggered, parent, [handler] { handler(u"copySelectedComments"_s, {}); });
+    auto *actionCopyName = new QAction(UIThemeManager::instance()->getIcon(u"name"_s, u"edit-copy"_s), tr("&Name"), listMenu);
+    connect(actionCopyName, &QAction::triggered, parent, [handler] { handler(u"copySelectedNames"_s, {}); });
+    auto *actionCopyHash1 = new QAction(UIThemeManager::instance()->getIcon(u"hash"_s, u"edit-copy"_s), tr("Info &hash v1"), listMenu);
+    connect(actionCopyHash1, &QAction::triggered, parent, [handler] { handler(u"hash1"_s, {}); });
+    auto *actionCopyHash2 = new QAction(UIThemeManager::instance()->getIcon(u"hash"_s, u"edit-copy"_s), tr("Info h&ash v2"), listMenu);
+    connect(actionCopyHash2, &QAction::triggered, parent, [handler] { handler(u"hash2"_s, {}); });
+    auto *actionCopyContentPath = new QAction(UIThemeManager::instance()->getIcon(u"directory"_s, u"edit-copy"_s), tr("Content &Path"), listMenu);
+    connect(actionCopyContentPath, &QAction::triggered, parent, [handler] { handler(u"copyContentPaths"_s, {}); });
+    auto *actionSuperSeedingMode = new TriStateAction(tr("Super seeding mode"), listMenu);
+    connect(actionSuperSeedingMode, &QAction::triggered, parent, [handler](bool checked) { handler(u"setSelectedTorrentsSuperSeeding"_s, checked); });
+    auto *actionRename = new QAction(UIThemeManager::instance()->getIcon(u"edit-rename"_s), tr("Re&name..."), listMenu);
+    connect(actionRename, &QAction::triggered, parent, [handler] { handler(u"renameSelectedTorrent"_s, {}); });
+    auto *actionSequentialDownload = new TriStateAction(tr("Download in sequential order"), listMenu);
+    actionSequentialDownload->setObjectName(u"sequentialDownloadAction"_s);
+    connect(actionSequentialDownload, &QAction::triggered, parent, [handler](bool checked) { handler(u"setSelectedTorrentsSequentialDownload"_s, checked); });
+    auto *actionFirstLastPiecePrio = new TriStateAction(tr("Download first and last pieces first"), listMenu);
+    connect(actionFirstLastPiecePrio, &QAction::triggered, parent, [handler](bool checked) { handler(u"setSelectedFirstLastPiecePrio"_s, checked); });
+    auto *actionAutoTMM = new TriStateAction(tr("Automatic Torrent Management"), listMenu);
+    actionAutoTMM->setToolTip(tr("Automatic mode means that various torrent properties (e.g. save path) will be decided by the associated category"));
+    connect(actionAutoTMM, &QAction::triggered, parent, [handler](bool checked) { handler(u"setSelectedAutoTMMEnabled"_s, checked); });
+    auto *actionEditTracker = new QAction(UIThemeManager::instance()->getIcon(u"edit-rename"_s), tr("Edit trac&kers..."), listMenu);
+    connect(actionEditTracker, &QAction::triggered, parent, [handler] { handler(u"editTorrentTrackers"_s, {}); });
+    auto *actionExportTorrent = new QAction(UIThemeManager::instance()->getIcon(u"edit-copy"_s), tr("E&xport .torrent..."), listMenu);
+    connect(actionExportTorrent, &QAction::triggered, parent, [handler] { handler(u"exportTorrent"_s, {}); });
+    // End of actions
+
+    if (needsStart)
+        listMenu->addAction(actionStart);
+    if (needsStop)
+        listMenu->addAction(actionStop);
+    if (needsForce)
+        listMenu->addAction(actionForceStart);
+    listMenu->addSeparator();
+    listMenu->addAction(actionDelete);
+    listMenu->addSeparator();
+    listMenu->addAction(actionSetTorrentPath);
+    if (state.selectionCount == 1)
+        listMenu->addAction(actionRename);
+    listMenu->addAction(actionEditTracker);
+
+    // Category Menu
+    const auto &categories = state.categories;
+
+    QMenu *categoryMenu = listMenu->addMenu(UIThemeManager::instance()->getIcon(u"view-categories"_s), tr("Categor&y"));
+
+    categoryMenu->addAction(UIThemeManager::instance()->getIcon(u"list-add"_s), tr("&New...", "New category...")
+        , parent, [handler] { handler(u"newCategory"_s, {}); });
+    categoryMenu->addAction(UIThemeManager::instance()->getIcon(u"edit-clear"_s), tr("&Reset", "Reset category")
+        , parent, [handler] { handler(u"category"_s, QString()); });
+    categoryMenu->addSeparator();
+
+    for (const QString &category : asConst(categories))
+    {
+        const QString escapedCategory = QString(category).replace(u'&', u"&&"_s);  // avoid '&' becomes accelerator key
+        QAction *categoryAction = categoryMenu->addAction(UIThemeManager::instance()->getIcon(u"view-categories"_s), escapedCategory
+            , parent, [handler, category] { handler(u"category"_s, category); });
+
+        if (allSameCategory && (category == firstCategory))
+        {
+            categoryAction->setCheckable(true);
+            categoryAction->setChecked(true);
+        }
+    }
+
+    // Tag Menu
+    QMenu *tagsMenu = listMenu->addMenu(UIThemeManager::instance()->getIcon(u"tags"_s, u"view-categories"_s), tr("Ta&gs"));
+
+    tagsMenu->addAction(UIThemeManager::instance()->getIcon(u"list-add"_s), tr("&Add...", "Add / assign multiple tags...")
+        , parent, [handler] { handler(u"addTags"_s, {}); });
+    tagsMenu->addAction(UIThemeManager::instance()->getIcon(u"edit-clear"_s), tr("&Remove All", "Remove all tags")
+        , parent, [handler] { handler(u"clearTags"_s, {}); });
+    tagsMenu->addSeparator();
+
+    const auto &tags = state.tags;
+    for (const QString &tag : asConst(tags))
+    {
+        auto *action = new TriStateAction(QString(tag).replace(u'&', u"&&"_s), tagsMenu);
+        action->setCloseOnInteraction(false);
+
+        const Qt::CheckState initialState = tagsInAll.contains(tag) ? Qt::Checked
+                                            : tagsInAny.contains(tag) ? Qt::PartiallyChecked : Qt::Unchecked;
+        action->setCheckState(initialState);
+
+        connect(action, &QAction::toggled, parent, [handler, tag](bool checked)
+        { handler(checked ? u"addTag"_s : u"removeTag"_s, tag); });
+
+        tagsMenu->addAction(action);
+    }
+
+    actionAutoTMM->setCheckState(allSameAutoTMM
+        ? (firstAutoTMM ? Qt::Checked : Qt::Unchecked)
+        : Qt::PartiallyChecked);
+    listMenu->addAction(actionAutoTMM);
+
+    listMenu->addSeparator();
+    listMenu->addAction(actionTorrentOptions);
+    if (!oneNotFinished && oneHasMetadata)
+    {
+        actionSuperSeedingMode->setCheckState(allSameSuperSeeding
+            ? (superSeedingMode ? Qt::Checked : Qt::Unchecked)
+            : Qt::PartiallyChecked);
+        listMenu->addAction(actionSuperSeedingMode);
+    }
+    listMenu->addSeparator();
+    bool addedPreviewAction = false;
+    if (needsPreview)
+    {
+        listMenu->addAction(actionPreviewFile);
+        addedPreviewAction = true;
+    }
+    if (oneNotFinished)
+    {
+        actionSequentialDownload->setCheckState(allSameSequentialDownloadMode
+            ? (sequentialDownloadMode ? Qt::Checked : Qt::Unchecked)
+            : Qt::PartiallyChecked);
+        listMenu->addAction(actionSequentialDownload);
+
+        actionFirstLastPiecePrio->setCheckState(allSamePrioFirstlast
+            ? (prioritizeFirstLast ? Qt::Checked : Qt::Unchecked)
+            : Qt::PartiallyChecked);
+        listMenu->addAction(actionFirstLastPiecePrio);
+
+        addedPreviewAction = true;
+    }
+
+    if (addedPreviewAction)
+        listMenu->addSeparator();
+    if (oneHasMetadata)
+        listMenu->addAction(actionForceRecheck);
+    // We can not force reannounce torrents that are stopped/errored/checking/missing files/queued.
+    // We may already have the tracker list from magnet url. So we can force reannounce torrents without metadata anyway.
+    listMenu->addAction(actionForceReannounce);
+    actionForceReannounce->setEnabled(oneCanForceReannounce);
+    if (!oneCanForceReannounce)
+        actionForceReannounce->setToolTip(tr("Can not force reannounce if torrent is Stopped/Queued/Errored/Checking"));
+    listMenu->addSeparator();
+    listMenu->addAction(actionOpenDestinationFolder);
+    if (state.queueing && oneNotFinished)
+    {
+        listMenu->addSeparator();
+        QMenu *queueMenu = listMenu->addMenu(
+            UIThemeManager::instance()->getIcon(u"queued"_s), tr("&Queue"));
+        queueMenu->addAction(actionTopQueuePos);
+        queueMenu->addAction(actionIncreaseQueuePos);
+        queueMenu->addAction(actionDecreaseQueuePos);
+        queueMenu->addAction(actionBottomQueuePos);
+    }
+
+    QMenu *copySubMenu = listMenu->addMenu(UIThemeManager::instance()->getIcon(u"edit-copy"_s), tr("&Copy"));
+    copySubMenu->addAction(actionCopyName);
+    copySubMenu->addAction(actionCopyHash1);
+    actionCopyHash1->setEnabled(hasInfohashV1);
+    copySubMenu->addAction(actionCopyHash2);
+    actionCopyHash2->setEnabled(hasInfohashV2);
+    copySubMenu->addAction(actionCopyMagnetLink);
+    copySubMenu->addAction(actionCopyID);
+    copySubMenu->addAction(actionCopyComment);
+    copySubMenu->addAction(actionCopyContentPath);
+
+    actionExportTorrent->setToolTip(tr("Exported torrent is not necessarily the same as the imported"));
+    listMenu->addAction(actionExportTorrent);
+
+    return listMenu;
 }

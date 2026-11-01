@@ -28,7 +28,13 @@
  */
 
 #include "trackerlistwidget.h"
+#include <QMenu>
+#include "base/global.h"
+#include "gui/uithememanager.h"
 
+#include <QMenu>
+#include "base/global.h"
+#include "gui/uithememanager.h"
 #ifndef QBT_REMOTE_CLIENT
 
 #include <QAction>
@@ -345,38 +351,15 @@ void TrackerListWidget::showTrackerListMenu()
     if (!torrent())
         return;
 
-    QMenu *menu = new QMenu(this);
-    menu->setAttribute(Qt::WA_DeleteOnClose);
-
-    // Add actions
-    menu->addAction(UIThemeManager::instance()->getIcon(u"list-add"_s), tr("Add trackers...")
-            , this, &TrackerListWidget::openAddTrackersDialog);
-
-    if (!getSelectedTrackerRows().isEmpty())
+    QMenu *menu = createContextMenu(this, !getSelectedTrackerRows().isEmpty(), torrent()->isStopped(), [this](const QString &command, const QVariant &)
     {
-        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-rename"_s),tr("Edit tracker URL...")
-                , this, &TrackerListWidget::editSelectedTracker);
-        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-clear"_s, u"list-remove"_s), tr("Remove tracker")
-                , this, &TrackerListWidget::deleteSelectedTrackers);
-        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-copy"_s), tr("Copy tracker URL")
-                , this, &TrackerListWidget::copyTrackerUrl);
-        if (!torrent()->isStopped())
-        {
-            menu->addAction(UIThemeManager::instance()->getIcon(u"reannounce"_s, u"view-refresh"_s), tr("Force reannounce to selected trackers")
-                    , this, &TrackerListWidget::reannounceSelected);
-        }
-    }
-
-    if (!torrent()->isStopped())
-    {
-        menu->addSeparator();
-        menu->addAction(UIThemeManager::instance()->getIcon(u"reannounce"_s, u"view-refresh"_s), tr("Force reannounce to all trackers")
-                , this, [this]()
-        {
-            torrent()->forceReannounce();
-            torrent()->forceDHTAnnounce();
-        });
-    }
+        if (command == u"add") openAddTrackersDialog();
+        else if (command == u"edit") editSelectedTracker();
+        else if (command == u"remove") deleteSelectedTrackers();
+        else if (command == u"copy") copyTrackerUrl();
+        else if (command == u"selected") reannounceSelected();
+        else if (command == u"all") { torrent()->forceReannounce(); torrent()->forceDHTAnnounce(); }
+    });
 
     menu->popup(QCursor::pos());
 }
@@ -468,3 +451,37 @@ void TrackerListWidget::wheelEvent(QWheelEvent *event)
 #else
 TrackerListWidget::TrackerListWidget(QWidget *parent) : TrackerListView(parent) {}
 #endif
+
+QMenu *TrackerListWidget::createContextMenu(QWidget *parent, bool selected, bool stopped, const MenuHandler &handler)
+{
+    QMenu *menu = new QMenu(parent);
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+
+    // Add actions
+    menu->addAction(UIThemeManager::instance()->getIcon(u"list-add"_s), tr("Add trackers...")
+            , parent, [handler] { handler(u"add"_s, {}); });
+
+    if (selected)
+    {
+        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-rename"_s),tr("Edit tracker URL...")
+                , parent, [handler] { handler(u"edit"_s, {}); });
+        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-clear"_s, u"list-remove"_s), tr("Remove tracker")
+                , parent, [handler] { handler(u"remove"_s, {}); });
+        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-copy"_s), tr("Copy tracker URL")
+                , parent, [handler] { handler(u"copy"_s, {}); });
+        if (!stopped)
+        {
+            menu->addAction(UIThemeManager::instance()->getIcon(u"reannounce"_s, u"view-refresh"_s), tr("Force reannounce to selected trackers")
+                    , parent, [handler] { handler(u"selected"_s, {}); });
+        }
+    }
+
+    if (!stopped)
+    {
+        menu->addSeparator();
+        menu->addAction(UIThemeManager::instance()->getIcon(u"reannounce"_s, u"view-refresh"_s), tr("Force reannounce to all trackers")
+                , parent, [handler] { handler(u"all"_s, {}); });
+    }
+
+    return menu;
+}

@@ -21,6 +21,6 @@ int main(int argc, char **argv)
         app.installTranslator(&translator);
     Remote::Window window;
     window.show();
-    QTimer::singleShot(0, &window, &Remote::Window::showConnectionDialog);
+    QTimer::singleShot(0, &window, &Remote::Window::startLastProfile);
     return app.exec();
 }

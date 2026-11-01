@@ -9,6 +9,12 @@
 #include <QPersistentModelIndex>
 #include <QSignalSpy>
 #include <QTreeView>
+#include <QSplitter>
+#include "gui/addnewtorrentdialog.h"
+#include "gui/fspathedit.h"
+#include "gui/properties/proptabbar.h"
+#include "gui/tristateaction.h"
+#include "torrentmetadata.h"
 #include <QLabel>
 #include <QLineEdit>
 #include <QGroupBox>
@@ -801,6 +807,245 @@ private slots:
         window.openRemotePath(u"/srv/downloads"_s);
         QCOMPARE(browser.urls.size(), 2);
         QCOMPARE(browser.urls.last(), QUrl::fromLocalFile(other.path()));
+    }
+
+
+    void lowerPanelCollapsesAndRestoresSplitter()
+    {
+        Window window;
+        window.resize(1000, 800); window.show();
+        auto *panel = window.findChild<Properties *>();
+        auto *tabs = panel->findChild<PropTabBar *>();
+        auto *splitter = qobject_cast<QSplitter *>(panel->parentWidget());
+        QVERIFY(splitter);
+        QTest::qWait(30);
+        splitter->setSizes({420, 300});
+        QTest::qWait(30);
+        const auto original = splitter->sizes();
+        const int index = tabs->currentIndex();
+        QVERIFY(index >= 0);
+        tabs->setCurrentIndex(index);
+        QTRY_VERIFY(panel->height() < 65);
+        QVERIFY(!panel->isPanelVisible());
+        QCOMPARE(QSettings().value(u"remote/propertiesTab"_s).toInt(), -1);
+        tabs->setCurrentIndex(index);
+        QTRY_VERIFY(panel->height() > 100);
+        QVERIFY(panel->isPanelVisible());
+        QVERIFY(qAbs(splitter->sizes()[1] - original[1]) < 25);
+        tabs->setCurrentIndex(index);
+        window.close();
+        Window next; next.resize(1000, 800); next.show();
+        auto *restored = next.findChild<Properties *>();
+        QTRY_VERIFY(restored->height() < 65);
+        QCOMPARE(restored->currentIndex(), -1);
+        restored->findChild<PropTabBar *>()->setCurrentIndex(0);
+        QTRY_VERIFY(restored->height() > 100);
+    }
+
+    void contentHeaderPersistsAcrossTorrentsAndInstances()
+    {
+        {
+            Properties panel;
+            auto *tree = panel.findChild<TorrentContentWidget *>();
+            tree->setColumnWidth(0, 419);
+            const auto files = QJsonDocument(QJsonArray {QJsonObject{{u"index"_s, 0}, {u"name"_s,u"Folder/file.bin"_s}, {u"size"_s,100}, {u"priority"_s,1}}});
+            panel.setTorrent(QJsonObject{{u"hash"_s,u"first"_s}}); panel.setData(4, files);
+            QCOMPARE(tree->columnWidth(0), 419);
+            panel.setTorrent(QJsonObject{{u"hash"_s,u"second"_s}}); panel.setData(4, files);
+            QCOMPARE(tree->columnWidth(0), 419);
+            bool hidden = false;
+            QTimer::singleShot(0, [&]
+            {
+                auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+                if (!menu) return;
+                for (auto *action : menu->actions()) if (action->text() == tree->model()->headerData(5, Qt::Horizontal).toString())
+                { action->trigger(); hidden = true; break; }
+                menu->close();
+            });
+            QVERIFY(QMetaObject::invokeMethod(tree->header(), "customContextMenuRequested", Q_ARG(QPoint, QPoint(5,5))));
+            QVERIFY(hidden); QVERIFY(tree->isColumnHidden(5));
+        }
+        Properties restored;
+        auto *tree = restored.findChild<TorrentContentWidget *>();
+        QCOMPARE(tree->columnWidth(0), 419);
+        QVERIFY(tree->isColumnHidden(5));
+        tree->setColumnAvailable(5, false); tree->setColumnAvailable(5, true);
+        QVERIFY(tree->isColumnHidden(5));
+    }
+
+    void peersInternalColumnNeverReturnsOrAppearsInMenu()
+    {
+        {
+            PeerListWidget old;
+            old.showColumn(PeerListView::IP_HIDDEN);
+            QSettings().setValue(u"remote/peerHeader"_s, old.header()->saveState());
+        }
+        Properties panel;
+        auto *peers = panel.findChild<PeerListWidget *>();
+        QVERIFY(peers->isColumnHidden(PeerListView::IP_HIDDEN));
+        bool inspected = false, numeric = false;
+        QTimer::singleShot(0, [&]
+        {
+            auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+            if (!menu) return;
+            inspected = true;
+            for (const auto *action : menu->actions()) numeric |= action->text() == u"15";
+            menu->close();
+        });
+        QVERIFY(QMetaObject::invokeMethod(peers->header(), "customContextMenuRequested", Q_ARG(QPoint, QPoint(5,5))));
+        QVERIFY(inspected); QVERIFY(!numeric);
+        panel.setData(2, QJsonDocument(QJsonObject{{u"show_flags"_s,true}, {u"peers"_s,QJsonObject()}}));
+        QVERIFY(peers->isColumnHidden(PeerListView::IP_HIDDEN));
+    }
+
+    void lastSelectedProfileConnectsWithoutChooser()
+    {
+        auto profile = ProfileStore::create(); profile.name = u"Last server"_s; profile.url = QUrl(u"https://example.test/qbt/"_s);
+        QVERIFY(ProfileStore::save({profile}));
+        QSettings().setValue(u"remote/selectedProfile"_s, profile.id);
+        Network network; Window window(nullptr, &network);
+        window.startLastProfile();
+        QTRY_VERIFY(window.client()->isConnected());
+        QCOMPARE(window.client()->serverUrl(), profile.url);
+        QVERIFY(!window.findChild<ProfileEditor *>());
+    }
+
+    void nativeMenusDispatchPropertyCommands()
+    {
+        Properties panel; panel.show();
+        panel.setTorrent(QJsonObject{{u"hash"_s,u"abc"_s},{u"state"_s,u"downloading"_s}});
+        QSignalSpy commands(&panel, &Properties::commandRequested);
+        panel.setData(4, QJsonDocument(QJsonArray{QJsonObject{{u"index"_s,7},{u"name"_s,u"file.bin"_s},{u"size"_s,100},{u"priority"_s,1}}}));
+        auto *tree = panel.findChild<TorrentContentWidget *>();
+        tree->selectionModel()->select(tree->model()->index(0,0),QItemSelectionModel::Select|QItemSelectionModel::Rows);
+        QVERIFY(QMetaObject::invokeMethod(tree,"customContextMenuRequested",Q_ARG(QPoint,QPoint(5,5))));
+        auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget()); QVERIFY(menu);
+        QAction *priority = nullptr;
+        for (auto *action : menu->actions()) if (action->menu())
+            for (auto *child : action->menu()->actions()) if (child->text() == TorrentContentWidget::tr("High")) priority = child;
+        QVERIFY(priority); priority->trigger(); menu->close();
+        QCOMPARE(commands.size(),1);
+        QCOMPARE(commands.first()[0].toString(),u"torrents/filePrio"_s);
+        const auto form = qvariant_cast<QUrlQuery>(commands.first()[1]);
+        QCOMPARE(form.queryItemValue(u"hash"_s),u"abc"_s); QCOMPARE(form.queryItemValue(u"id"_s),u"7"_s); QCOMPARE(form.queryItemValue(u"priority"_s),u"6"_s);
+        TransferListWidget::MenuState state; state.selectionCount=1; state.needsStart=true; state.oneNotFinished=true; state.oneHasMetadata=true; state.queueing=true; state.categories={u"Movies"_s}; state.tags={u"tag"_s};
+        QString op; QVariant value;
+        auto *torrentMenu=TransferListWidget::createContextMenu(&panel,state,[&](const QString &command,const QVariant &data){op=command;value=data;});
+        auto *sequential = static_cast<TriStateAction *>(torrentMenu->findChild<QAction *>(u"sequentialDownloadAction"_s));
+        QVERIFY(sequential); sequential->trigger();
+        QCOMPARE(op,u"setSelectedTorrentsSequentialDownload"_s); QVERIFY(value.toBool());
+        delete torrentMenu;
+    }
+
+    void addDialogUsesServerPathsAndOriginalForm()
+    {
+        QTemporaryDir directory;
+        QFile torrent(directory.filePath(u"sample.torrent"_s)); QVERIFY(torrent.open(QIODevice::WriteOnly));
+        torrent.write("d4:infod6:lengthi123e4:name8:file.bin6:pieces20:01234567890123456789ee"); torrent.close();
+        const auto metadata = readTorrentMetadata(torrent.fileName()); QVERIFY2(metadata.valid(),qPrintable(metadata.error));
+        QCOMPARE(metadata.files,QStringList{u"file.bin"_s}); QCOMPARE(metadata.sizes,QList<qint64>{123}); QCOMPARE(metadata.hashV1.size(),40);
+        QJsonObject preferences{{u"save_path"_s,u"/srv/downloads"_s},{u"temp_path"_s,u"/srv/incomplete"_s},{u"temp_path_enabled"_s,true},{u"add_stopped_enabled"_s,true}};
+        AddNewTorrentDialog dialog(torrent.fileName(),preferences,{},nullptr,true);
+        dialog.show();
+        auto *save = static_cast<FileSystemPathComboEdit *>(dialog.findChild<FileSystemPathEdit *>(u"savePath"_s)); QVERIFY(save);
+        QCOMPARE(save->pathText(),u"/srv/downloads"_s);
+        save->setPathText(u"/mnt/server/фильмы"_s);
+        QCOMPARE(dialog.parameters().queryItemValue(u"savepath"_s),u"/mnt/server/фильмы"_s);
+        QCOMPARE(dialog.parameters().queryItemValue(u"downloadPath"_s),u"/srv/incomplete"_s);
+        QCOMPARE(dialog.parameters().queryItemValue(u"stopped"_s),u"true"_s);
+        QVERIFY(!save->findChild<QLineEdit *>()->validator());
+        auto *tree=dialog.findChild<TorrentContentWidget *>(); QVERIFY(tree); QCOMPARE(tree->model()->rowCount(),1);
+        QCOMPARE(tree->model()->index(0,0).data().toString(),u"file.bin"_s);
+        dialog.findChild<QPushButton *>(u"buttonSelectNone"_s)->click();
+        QCOMPARE(dialog.filePriorities().value(0),QStringList{u"0"_s});
+        QCOMPARE(dialog.torrentHash(),metadata.hashV1);
+        const auto screenshot=qEnvironmentVariable("REMOTE_SCREENSHOT_PATH"); if(!screenshot.isEmpty()) QVERIFY(dialog.grab().save(screenshot+u".add.png"));
+    }
+
+    void multipartAddPreservesServerOptionsAndFilePriorities()
+    {
+        Network network; network.responses.insert(u"/qbt/api/v2/torrents/add"_s,{"Ok."});
+        Client client(nullptr,&network); client.connectToServer(keyConnection()); QTRY_VERIFY(client.isConnected());
+        QTemporaryDir directory; QFile file(directory.filePath(u"upload.torrent"_s)); QVERIFY(file.open(QIODevice::WriteOnly)); file.write("test torrent bytes");file.close();
+        QUrlQuery form; form.addQueryItem(u"savepath"_s,u"/srv/remote/файл"_s); form.addQueryItem(u"stopped"_s,u"true"_s);
+        client.addTorrentFile(file.fileName(),form,u"abc"_s,{{0,{u"7"_s}}});
+        QTRY_VERIFY(std::any_of(network.sent.cbegin(),network.sent.cend(),[](const auto &sent){return sent.request.url().path().endsWith(u"torrents/filePrio");}));
+        for(const auto &sent:network.sent)
+        {
+            if(sent.request.url().path().endsWith(u"torrents/add"))
+            { QVERIFY(sent.body.contains("test torrent bytes")); QVERIFY(sent.body.contains(QString(u"/srv/remote/файл"_s).toUtf8())); QVERIFY(sent.body.contains("name=\"stopped\"")); }
+            if(sent.request.url().path().endsWith(u"torrents/filePrio"))
+            {const QUrlQuery query(QString::fromUtf8(sent.body)); QCOMPARE(query.queryItemValue(u"hash"_s),u"abc"_s); QCOMPARE(query.queryItemValue(u"id"_s),u"7"_s);}
+        }
+    }
+
+
+    void torrentMetadataSkipsPaddingAndRejectsInvalidInput()
+    {
+        QTemporaryDir directory;
+        const auto bencode = [](const QVariant &value, const auto &self) -> QByteArray
+        {
+            if (value.metaType().id() == QMetaType::QVariantMap)
+            {
+                QByteArray bytes("d"); const auto map=value.toMap();
+                for(auto it=map.cbegin();it!=map.cend();++it) {const auto key=it.key().toUtf8();bytes+=QByteArray::number(key.size())+':'+key+self(it.value(),self);} return bytes+'e';
+            }
+            if(value.metaType().id()==QMetaType::QVariantList) {QByteArray bytes("l");for(const auto &item:value.toList())bytes+=self(item,self);return bytes+'e';}
+            if(value.metaType().id()==QMetaType::Int || value.metaType().id()==QMetaType::LongLong) return 'i'+QByteArray::number(value.toLongLong())+'e';
+            const auto bytes=value.toByteArray();return QByteArray::number(bytes.size())+':'+bytes;
+        };
+        const auto write = [&](const QByteArray &bytes)
+        {QFile file(directory.filePath(u"test.torrent"_s)); if(!file.open(QIODevice::WriteOnly)) return QString();file.write(bytes);return file.fileName();};
+        const auto entry = [](const QByteArray &name, int size, bool padding)
+        {return QVariantMap{{u"path"_s,QVariantList{name}},{u"length"_s,size},{u"attr"_s,padding?QByteArray("p"):QByteArray()}};};
+        QVariantMap info{{u"name"_s,QByteArray("root")},{u"pieces"_s,QByteArray(20,'a')},{u"files"_s,QVariantList{entry("a",3,false),entry("pad",2,true),entry("c",5,false)}}};
+        auto parsed=readTorrentMetadata(write(bencode(QVariantMap{{u"info"_s,info}},bencode)));
+        QVERIFY2(parsed.valid(),qPrintable(parsed.error)); QCOMPARE(parsed.files,QStringList({u"root/a"_s,u"root/c"_s})); QCOMPARE(parsed.sizes,QList<qint64>({3,5}));
+        QVariantMap tree{{u"file.bin"_s,QVariantMap{{QString(),QVariantMap{{u"length"_s,123}}}}}};
+        QVariantMap v2{{u"name"_s,QByteArray("file.bin")},{u"meta version"_s,2},{u"file tree"_s,tree}};
+        parsed=readTorrentMetadata(write(bencode(QVariantMap{{u"info"_s,v2}},bencode)));
+        QVERIFY2(parsed.valid(),qPrintable(parsed.error)); QCOMPARE(parsed.files,QStringList{u"file.bin"_s}); QCOMPARE(parsed.hashV2.size(),64); QVERIFY(parsed.hashV1.isEmpty());
+        info[u"files"_s]=QVariantList{entry("..",3,false)};
+        QVERIFY(!readTorrentMetadata(write(bencode(QVariantMap{{u"info"_s,info}},bencode))).valid());
+        QVERIFY(!readTorrentMetadata(write(QByteArray(66,'l')+QByteArray(66,'e'))).valid());
+        QVERIFY(!readTorrentMetadata(write("d4:info9999999999:short")).valid());
+    }
+
+    void mainTableHeaderRestoresWidthsAndVisibleColumns()
+    {
+        {
+            Window window; window.show();
+            auto *table=window.findChild<QTreeView *>(u"remoteTorrentTable"_s);
+            table->setColumnWidth(1,387); table->hideColumn(6); table->showColumn(7);
+            table->header()->moveSection(table->header()->visualIndex(7),2);
+            window.close();
+        }
+        Window restored;
+        auto *table=restored.findChild<QTreeView *>(u"remoteTorrentTable"_s);
+        QCOMPARE(table->columnWidth(1),387); QVERIFY(table->isColumnHidden(6)); QVERIFY(!table->isColumnHidden(7)); QCOMPARE(table->header()->visualIndex(7),2);
+    }
+
+
+    void fileSelectionFinishesBeforeStartingTorrent()
+    {
+        Network network; network.responses.insert(u"/qbt/api/v2/torrents/add"_s,{"Ok."});
+        Client client(nullptr,&network); client.connectToServer(keyConnection()); QTRY_VERIFY(client.isConnected());
+        QTemporaryDir directory; QFile file(directory.filePath(u"upload.torrent"_s)); QVERIFY(file.open(QIODevice::WriteOnly));file.write("file");file.close();
+        QUrlQuery form;form.addQueryItem(u"stopped"_s,u"false"_s);
+        client.addTorrentFile(file.fileName(),form,u"abc"_s,{{0,{u"1"_s}},{7,{u"2"_s}}});
+        QTRY_VERIFY(std::any_of(network.sent.cbegin(),network.sent.cend(),[](const auto &sent){return sent.request.url().path().endsWith(u"torrents/start");}));
+        QStringList mutations;
+        for(const auto &sent:network.sent)
+        {
+            if(sent.request.url().path().contains(u"/torrents/")) mutations.append(sent.request.url().path().section(u'/',-1));
+            if(sent.request.url().path().endsWith(u"torrents/add")) QVERIFY(sent.body.contains("name=\"stopped\"\r\n\r\ntrue"));
+        }
+        QCOMPARE(mutations,QStringList({u"add"_s,u"filePrio"_s,u"filePrio"_s,u"start"_s}));
+        network.sent.clear(); network.responses.insert(u"/qbt/api/v2/torrents/filePrio"_s,{"denied",403});
+        QSignalSpy errors(&client,&Client::errorOccurred);
+        client.addTorrentFile(file.fileName(),form,u"def"_s,{{0,{u"1"_s}}});
+        QTRY_COMPARE(errors.size(),1);
+        QVERIFY(std::none_of(network.sent.cbegin(),network.sent.cend(),[](const auto &sent){return sent.request.url().path().endsWith(u"torrents/start");}));
     }
 
     void nativeWindowStartsDisconnected()

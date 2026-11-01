@@ -28,6 +28,11 @@
  */
 
 #include "lineedit.h"
+#include <QSortFilterProxyModel>
+#include <QRegularExpression>
+#include <QSettings>
+#include <QMenu>
+#include "filterpatternformatmenu.h"
 
 #include <chrono>
 
@@ -75,4 +80,29 @@ void LineEdit::keyPressEvent(QKeyEvent *event)
     }
 
     QLineEdit::keyPressEvent(event);
+}
+
+void LineEdit::installPatternMenu(QSortFilterProxyModel *filter, const QString &settingsKey)
+{
+    setContextMenuPolicy(Qt::CustomContextMenu);
+    const auto apply = [this, filter, settingsKey]
+    {
+        filter->setRecursiveFilteringEnabled(true);
+        filter->setFilterCaseSensitivity(Qt::CaseInsensitive);
+        const auto format = static_cast<FilterPatternFormat>(QSettings().value(settingsKey, int(FilterPatternFormat::PlainText)).toInt());
+        if (format == FilterPatternFormat::Regex) filter->setFilterRegularExpression(QRegularExpression(text(), QRegularExpression::CaseInsensitiveOption));
+        else if (format == FilterPatternFormat::Wildcards) filter->setFilterRegularExpression(QRegularExpression(QRegularExpression::wildcardToRegularExpression(text(), QRegularExpression::UnanchoredWildcardConversion), QRegularExpression::CaseInsensitiveOption));
+        else filter->setFilterFixedString(text());
+    };
+    connect(this, &LineEdit::textUpdated, filter, apply);
+    connect(this, &QWidget::customContextMenuRequested, this, [this, settingsKey, apply](const QPoint &point)
+    {
+        auto *menu = createStandardContextMenu();
+        menu->setAttribute(Qt::WA_DeleteOnClose);
+        auto *formats = new FilterPatternFormatMenu(static_cast<FilterPatternFormat>(QSettings().value(settingsKey, int(FilterPatternFormat::PlainText)).toInt()), menu);
+        connect(formats, &FilterPatternFormatMenu::patternFormatChanged, this, [settingsKey, apply](FilterPatternFormat format)
+        { QSettings().setValue(settingsKey, int(format)); apply(); });
+        menu->addSeparator(); menu->addMenu(formats); menu->popup(mapToGlobal(point));
+    });
+    apply();
 }

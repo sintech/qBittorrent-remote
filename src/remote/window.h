@@ -39,6 +39,7 @@ namespace Remote
         bool connectProfile(const QString &id, QString *error = nullptr);
 
     public slots:
+        void startLastProfile();
         void showConnectionDialog();
         void showProfilesDialog();
         void openRemotePath(const QString &path);
@@ -56,6 +57,9 @@ namespace Remote
         void removeSelected();
         void addFiles();
         void addLinks();
+        void showAddDialog(const QString &source, bool file);
+        void editTrackers(const QStringList &hashes);
+        void sidebarCommand(const QString &kind, const QString &operation, const QString &value);
         void showContextMenu(const QPoint &position);
         void editProfiles(bool offerConnection);
         bool reloadProfiles(QString *error = nullptr);

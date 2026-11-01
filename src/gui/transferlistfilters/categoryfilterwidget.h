@@ -27,6 +27,8 @@
  */
 
 #pragma once
+#include <functional>
+class QMenu;
 
 #include <QTreeView>
 
@@ -36,6 +38,9 @@ class CategoryFilterWidget final : public QTreeView
     Q_DISABLE_COPY_MOVE(CategoryFilterWidget)
 
 public:
+    using MenuHandler = std::function<void(const QString &)>;
+    static QMenu *createContextMenu(QWidget *parent, bool normalItem, const MenuHandler &handler);
+
     CategoryFilterWidget(QWidget *parent, QAbstractItemModel *model);
     void configureView();
     void callUpdateGeometry();

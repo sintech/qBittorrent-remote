@@ -29,10 +29,16 @@
 
 #include "torrentcontentwidget.h"
 
+#include <QMenu>
+#include "base/global.h"
+#include "gui/uithememanager.h"
 #ifndef QBT_REMOTE_CLIENT
 
 #include <QDir>
 #include <QHeaderView>
+#include <QMenu>
+#include "base/global.h"
+#include "uithememanager.h"
 #include <QKeyEvent>
 #include <QLineEdit>
 #include <QMenu>
@@ -403,66 +409,15 @@ void TorrentContentWidget::displayContextMenu()
     if (selectedRows.empty())
         return;
 
-    QMenu *menu = new QMenu(this);
-    menu->setAttribute(Qt::WA_DeleteOnClose);
-
-    if (selectedRows.size() == 1)
+    QMenu *menu = createContextMenu(this, selectedRows.size(), !contentHandler()->actualStorageLocation().isEmpty(),
+        [this, selectedRows](const QString &command, const QVariant &value)
     {
-        const QModelIndex index = selectedRows[0];
-
-        if (!contentHandler()->actualStorageLocation().isEmpty())
-        {
-            menu->addAction(UIThemeManager::instance()->getIcon(u"folder-documents"_s), tr("Open")
-                            , this, [this, index]() { openItem(index); });
-            menu->addAction(UIThemeManager::instance()->getIcon(u"directory"_s), tr("Open containing folder")
-                            , this, [this, index]() { openParentFolder(index); });
-        }
-        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-rename"_s), tr("Rename...")
-                        , this, &TorrentContentWidget::renameSelectedFile);
-        menu->addSeparator();
-
-        QMenu *subMenu = menu->addMenu(tr("Priority"));
-
-        subMenu->addAction(tr("Do not download"), this, [this]
-        {
-            applyPriorities(BitTorrent::DownloadPriority::Ignored);
-        });
-        subMenu->addAction(tr("Normal"), this, [this]
-        {
-            applyPriorities(BitTorrent::DownloadPriority::Normal);
-        });
-        subMenu->addAction(tr("High"), this, [this]
-        {
-            applyPriorities(BitTorrent::DownloadPriority::High);
-        });
-        subMenu->addAction(tr("Maximum"), this, [this]
-        {
-            applyPriorities(BitTorrent::DownloadPriority::Maximum);
-        });
-        subMenu->addSeparator();
-        subMenu->addAction(tr("By shown file order"), this, &TorrentContentWidget::applyPrioritiesByOrder);
-    }
-    else
-    {
-        menu->addAction(tr("Do not download"), this, [this]
-        {
-            applyPriorities(BitTorrent::DownloadPriority::Ignored);
-        });
-        menu->addAction(tr("Normal priority"), this, [this]
-        {
-            applyPriorities(BitTorrent::DownloadPriority::Normal);
-        });
-        menu->addAction(tr("High priority"), this, [this]
-        {
-            applyPriorities(BitTorrent::DownloadPriority::High);
-        });
-        menu->addAction(tr("Maximum priority"), this, [this]
-        {
-            applyPriorities(BitTorrent::DownloadPriority::Maximum);
-        });
-        menu->addSeparator();
-        menu->addAction(tr("Priority by shown file order"), this, &TorrentContentWidget::applyPrioritiesByOrder);
-    }
+        if (command == u"open") openItem(selectedRows.first());
+        else if (command == u"parent") openParentFolder(selectedRows.first());
+        else if (command == u"rename") renameSelectedFile();
+        else if (command == u"order") applyPrioritiesByOrder();
+        else if (command == u"priority") applyPriorities(static_cast<BitTorrent::DownloadPriority>(value.toInt()));
+    });
 
     // The selected torrent might have disappeared during exec()
     // so we just close menu when an appropriate model is reset
@@ -552,3 +507,44 @@ void TorrentContentWidget::wheelEvent(QWheelEvent *event)
 #else
 TorrentContentWidget::TorrentContentWidget(QWidget *parent) : TorrentContentView(parent) {}
 #endif
+
+QMenu *TorrentContentWidget::createContextMenu(QWidget *parent, int selectionCount, bool canOpen, const MenuHandler &handler)
+{
+    QMenu *menu = new QMenu(parent);
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+
+    if (selectionCount == 1)
+    {
+
+        if (canOpen)
+        {
+            menu->addAction(UIThemeManager::instance()->getIcon(u"folder-documents"_s), tr("Open")
+                            , parent, [handler]() { handler(u"open"_s, {}); });
+            menu->addAction(UIThemeManager::instance()->getIcon(u"directory"_s), tr("Open containing folder")
+                            , parent, [handler]() { handler(u"parent"_s, {}); });
+        }
+        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-rename"_s), tr("Rename...")
+                        , parent, [handler]() { handler(u"rename"_s, {}); });
+        menu->addSeparator();
+
+        QMenu *subMenu = menu->addMenu(tr("Priority"));
+
+        subMenu->addAction(tr("Do not download"), parent, [handler] { handler(u"priority"_s, 0); });
+        subMenu->addAction(tr("Normal"), parent, [handler] { handler(u"priority"_s, 1); });
+        subMenu->addAction(tr("High"), parent, [handler] { handler(u"priority"_s, 6); });
+        subMenu->addAction(tr("Maximum"), parent, [handler] { handler(u"priority"_s, 7); });
+        subMenu->addSeparator();
+        subMenu->addAction(tr("By shown file order"), parent, [handler]() { handler(u"order"_s, {}); });
+    }
+    else
+    {
+        menu->addAction(tr("Do not download"), parent, [handler] { handler(u"priority"_s, 0); });
+        menu->addAction(tr("Normal priority"), parent, [handler] { handler(u"priority"_s, 1); });
+        menu->addAction(tr("High priority"), parent, [handler] { handler(u"priority"_s, 6); });
+        menu->addAction(tr("Maximum priority"), parent, [handler] { handler(u"priority"_s, 7); });
+        menu->addSeparator();
+        menu->addAction(tr("Priority by shown file order"), parent, [handler]() { handler(u"order"_s, {}); });
+    }
+
+    return menu;
+}

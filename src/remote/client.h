@@ -4,6 +4,7 @@
 #include <functional>
 
 #include <QJsonObject>
+#include <QMap>
 #include <QNetworkAccessManager>
 #include <QSet>
 #include <QTimer>
@@ -34,7 +35,8 @@ namespace Remote
         bool isConnected() const;
         QUrl serverUrl() const;
         void command(const QString &method, const QUrlQuery &parameters);
-        void addTorrentFile(const QString &path, const QString &savePath = {});
+        void createCategoryAndAssign(const QString &category, const QStringList &hashes);
+        void addTorrentFile(const QString &path, const QUrlQuery &parameters = {}, const QString &hash = {}, const QMap<int, QStringList> &priorities = {});
         void get(const QString &method, const QUrlQuery &parameters,
             std::function<void(const QByteArray &)> callback);
 
@@ -49,6 +51,7 @@ namespace Remote
         using Callback = std::function<void(const QByteArray &)>;
         void request(const QString &method, const QUrlQuery &parameters, bool post,
             Callback callback, bool mutation = false, QHttpMultiPart *multipart = nullptr);
+        void applyFilePriorities(const QString &hash, QMap<int, QStringList> priorities, bool start);
         void invalidateRequests();
         void authenticate();
         void poll();

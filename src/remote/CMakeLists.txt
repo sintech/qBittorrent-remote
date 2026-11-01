@@ -9,7 +9,7 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../gui" "${CMAKE_CURRENT_SOURCE_DIR}/../gui/properties" "${CMAKE_CURRENT_BINARY_DIR}")
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Network Widgets Svg)
-add_library(qbt_remote STATIC profiles.cpp profiles.h profileeditor.cpp profileeditor.h client.cpp client.h torrentmodel.cpp torrentmodel.h window.cpp window.h properties.cpp properties.h sidebar.cpp sidebar.h
+add_library(qbt_remote STATIC torrentmetadata.cpp torrentmetadata.h profiles.cpp profiles.h profileeditor.cpp profileeditor.h client.cpp client.h torrentmodel.cpp torrentmodel.h window.cpp window.h torrentmenu.cpp properties.cpp properties.h propertymenus.cpp sidebar.cpp sidebar.h
     ../gui/uithememanager.cpp ../gui/uithememanager.h
     ../gui/uithemesource.cpp ../gui/uithemesource.h
     ../base/path.cpp ../base/utils/readfile.cpp
@@ -18,11 +18,16 @@ add_library(qbt_remote STATIC profiles.cpp profiles.h profileeditor.cpp profilee
     ../gui/transferlistfilters/statusfilterwidget.cpp ../gui/transferlistfilters/statusfilterwidget.h
     ../gui/transferlistfilters/categoryfilterwidget.cpp ../gui/transferlistfilters/categoryfilterwidget.h
     ../gui/transferlistfilters/tagfilterwidget.cpp ../gui/transferlistfilters/tagfilterwidget.h
+    ../gui/addnewtorrentdialogremote.cpp ../gui/addnewtorrentdialog.h ../gui/addnewtorrentdialog.ui
+    ../gui/fspathedit.cpp ../gui/fspathedit.h ../gui/fspathedit_p.cpp ../gui/fspathedit_p.h
+    ../base/bittorrent/trackerentry.cpp ../base/bittorrent/trackerentry.h
+    ../gui/trackerentriesdialog.cpp ../gui/trackerentriesdialog.h ../gui/trackerentriesdialog.ui
     ../gui/downloadfromurldialog.cpp ../gui/downloadfromurldialog.h ../gui/downloadfromurldialog.ui
     ../gui/deletionconfirmationdialog.cpp ../gui/deletionconfirmationdialog.h ../gui/deletionconfirmationdialog.ui
     ../base/net/downloadscheme.cpp
     ../gui/mainwindow.cpp ../gui/mainwindow.h
     ../gui/statusbar.cpp ../gui/statusbar.h ../gui/iconsizes.cpp
+    ../gui/tristateaction.cpp ../gui/tristateaction.h ../gui/tristatewidget.cpp ../gui/tristatewidget.h
     ../gui/transferlistwidget.cpp ../gui/transferlistwidget.h
     ../gui/transferlistmodelpresentation.cpp
     ../gui/transferlistdelegate.cpp ../gui/transferlistdelegate.h
@@ -47,6 +52,7 @@ add_library(qbt_remote STATIC profiles.cpp profiles.h profileeditor.cpp profilee
     ../gui/properties/peerlistwidget.cpp ../gui/properties/peerlistwidget.h
     ../gui/trackerlist/trackerlistwidget.cpp ../gui/trackerlist/trackerlistwidget.h
     ../gui/torrentcontentwidget.cpp ../gui/torrentcontentwidget.h
+    ../gui/filterpatternformatmenu.cpp ../gui/filterpatternformatmenu.h ../gui/filterpatternformat.h
     ../gui/lineedit.cpp ../gui/lineedit.h)
 target_compile_definitions(qbt_remote PUBLIC QBT_REMOTE_CLIENT QBT_USE_QCOLLATOR=1)
 target_compile_definitions(qbt_remote PUBLIC QT_USE_QSTRINGBUILDER QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII)

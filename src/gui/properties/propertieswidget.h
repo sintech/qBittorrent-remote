@@ -28,6 +28,9 @@
  */
 
 #pragma once
+#include <functional>
+#include <QVariant>
+class QMenu;
 
 #include <QList>
 #include <QWidget>
@@ -63,6 +66,8 @@ class PropertiesWidget : public QWidget
     Q_DISABLE_COPY_MOVE(PropertiesWidget)
 
 public:
+    using MenuHandler = std::function<void(const QString &, const QVariant &)>;
+    static QMenu *createContextMenu(QWidget *parent, bool selected, const MenuHandler &handler);
     enum SlideState
     {
         REDUCED,
@@ -71,6 +76,7 @@ public:
 
     explicit PropertiesWidget(QWidget *parent);
     ~PropertiesWidget() override;
+    void setVisibility(bool visible);
 
 #ifndef QBT_REMOTE_CLIENT
     BitTorrent::Torrent *getCurrentTorrent() const;
@@ -81,7 +87,6 @@ public:
     LineEdit *contentFilterLine() const;
 
 public slots:
-    void setVisibility(bool visible);
     void loadTorrentInfos(BitTorrent::Torrent *torrent);
     void loadDynamicData();
     void clear();

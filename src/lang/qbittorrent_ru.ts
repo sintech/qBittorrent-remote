@@ -486,6 +486,18 @@
         <source>Metadata retrieval complete</source>
         <translation>Поиск метаданных завершён</translation>
     </message>
+    <message>
+        <source>Add torrent</source>
+        <translation>Добавить торрент</translation>
+    </message>
+    <message>
+        <source>Metadata will be available after adding the torrent to the server.</source>
+        <translation>Метаданные будут доступны после добавления торрента на сервер.</translation>
+    </message>
+    <message>
+        <source>Could not read the torrent file.</source>
+        <translation>Не удалось прочитать торрент-файл.</translation>
+    </message>
 </context>
 <context>
     <name>AddTorrentManager</name>
@@ -11945,6 +11957,10 @@ Please choose a different name and try again.</source>
         <source>Column visibility</source>
         <translation>Отображение столбцов</translation>
     </message>
+    <message>
+        <source>Tracker URLs:</source>
+        <translation>Адреса трекеров:</translation>
+    </message>
 </context>
 <context>
     <name>TrackerStatusFilterWidget</name>
@@ -13449,6 +13465,58 @@ Please choose a different name and try again.</source>
         <source>Could not open the server Web UI in your browser.</source>
         <translation>Не удалось открыть Web UI сервера в браузере.</translation>
     </message>
+    <message>
+        <source>Server path:</source>
+        <translation>Путь на сервере:</translation>
+    </message>
+    <message>
+        <source>New name:</source>
+        <translation>Новое имя:</translation>
+    </message>
+    <message>
+        <source>Category:</source>
+        <translation>Категория:</translation>
+    </message>
+    <message>
+        <source>Category</source>
+        <translation>Категория</translation>
+    </message>
+    <message>
+        <source>Name:</source>
+        <translation>Имя:</translation>
+    </message>
+    <message>
+        <source>Tags:</source>
+        <translation>Метки:</translation>
+    </message>
+    <message>
+        <source>Tags</source>
+        <translation>Метки</translation>
+    </message>
+    <message>
+        <source>Tracker URLs:</source>
+        <translation>Адреса трекеров:</translation>
+    </message>
+    <message>
+        <source>Export torrent</source>
+        <translation>Экспорт торрента</translation>
+    </message>
+    <message>
+        <source>Could not save the torrent file.</source>
+        <translation>Не удалось сохранить торрент-файл.</translation>
+    </message>
+    <message>
+        <source>The Web API preserves existing tracker tiers; changing tier order is unavailable.</source>
+        <translation>Web API сохраняет существующие уровни трекеров; изменение порядка уровней недоступно.</translation>
+    </message>
+    <message>
+        <source>Add torrent</source>
+        <translation>Добавить торрент</translation>
+    </message>
+    <message>
+        <source>Could not load server download defaults.</source>
+        <translation>Не удалось загрузить с сервера настройки добавления торрентов.</translation>
+    </message>
 </context>
 <context>
     <name>Remote::Profiles</name>
@@ -13503,6 +13571,17 @@ Please choose a different name and try again.</source>
     <message>
         <source>These credentials can only be read by the Windows account that saved them.</source>
         <translation>Эти учётные данные доступны только учётной записи Windows, которая их сохранила.</translation>
+    </message>
+</context>
+<context>
+    <name>Remote::Properties</name>
+    <message>
+        <source>Tracker URLs:</source>
+        <translation>Адреса трекеров:</translation>
+    </message>
+    <message>
+        <source>New name:</source>
+        <translation>Новое имя:</translation>
     </message>
 </context>
 </TS>

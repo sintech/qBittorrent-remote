@@ -28,6 +28,9 @@
  */
 
 #pragma once
+#include <functional>
+#include <QVariant>
+class QMenu;
 
 #include "gui/propertylistviews.h"
 
@@ -53,6 +56,8 @@ class TorrentContentWidget final : public TorrentContentView
     Q_DISABLE_COPY_MOVE(TorrentContentWidget)
 
 public:
+    using MenuHandler = std::function<void(const QString &, const QVariant &)>;
+    static QMenu *createContextMenu(QWidget *parent, int selectionCount, bool canOpen, const MenuHandler &handler);
     enum Column
     {
         Name,

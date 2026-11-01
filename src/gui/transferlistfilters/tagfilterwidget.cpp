@@ -30,6 +30,9 @@
 #include "tagfilterwidget.h"
 
 #include "gui/utils.h"
+#include <QMenu>
+#include "base/global.h"
+#include "gui/uithememanager.h"
 #ifndef QBT_REMOTE_CLIENT
 
 #include <QMenu>
@@ -91,55 +94,18 @@ void TagFilterWidget::onCurrentRowChanged(const QModelIndex &current, [[maybe_un
 
 void TagFilterWidget::showMenu()
 {
-    QMenu *menu = new QMenu(this);
-    menu->setAttribute(Qt::WA_DeleteOnClose);
-
-    menu->addAction(UIThemeManager::instance()->getIcon(u"list-add"_s), tr("Add tag...")
-        , this, &TagFilterWidget::addTag);
-
     const auto selectedRows = selectionModel()->selectedRows();
-    if (!selectedRows.empty() && !TagFilterModel::isSpecialItem(selectedRows.first()))
+    const bool normalItem = !selectedRows.empty() && !TagFilterModel::isSpecialItem(selectedRows.first());
+    auto *menu = createContextMenu(this, normalItem, [this](const QString &op)
     {
-        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-clear"_s, u"list-remove"_s), tr("Remove tag")
-            , this, &TagFilterWidget::removeTag);
-    }
-
-    menu->addAction(UIThemeManager::instance()->getIcon(u"edit-clear"_s, u"list-remove"_s), tr("Remove unused tags")
-        , this, &TagFilterWidget::removeUnusedTags);
-    menu->addSeparator();
-    menu->addAction(UIThemeManager::instance()->getIcon(u"torrent-start"_s, u"media-playback-start"_s), tr("Start torrents")
-        , this, &TagFilterWidget::actionStartTorrentsTriggered);
-    menu->addAction(UIThemeManager::instance()->getIcon(u"torrent-stop"_s, u"media-playback-pause"_s), tr("Stop torrents")
-        , this, &TagFilterWidget::actionStopTorrentsTriggered);
-    menu->addAction(UIThemeManager::instance()->getIcon(u"list-remove"_s), tr("Remove torrents")
-        , this, &TagFilterWidget::actionDeleteTorrentsTriggered);
-
+        if (op == u"addTag") { addTag(); }
+        else if (op == u"removeTag") { removeTag(); }
+        else if (op == u"removeUnusedTags") { removeUnusedTags(); }
+        else if (op == u"actionStartTorrentsTriggered") { actionStartTorrentsTriggered(); }
+        else if (op == u"actionStopTorrentsTriggered") { actionStopTorrentsTriggered(); }
+        else if (op == u"actionDeleteTorrentsTriggered") { actionDeleteTorrentsTriggered(); }
+    });
     menu->popup(QCursor::pos());
-}
-
-Tag TagFilterWidget::askTagName()
-{
-    bool ok = false;
-    Tag tag;
-    bool invalid = true;
-    while (invalid)
-    {
-        invalid = false;
-        tag = Tag(AutoExpandableDialog::getText(this, tr("Add tag"), tr("Tag:")
-                , QLineEdit::Normal, tag.toString(), &ok));
-        if (ok && !tag.isEmpty())
-        {
-            if (!tag.isValid())
-            {
-                QMessageBox::warning(
-                    this, tr("Invalid tag name")
-                    , tr("Tag name '%1' is invalid").arg(tag.toString()));
-                invalid = true;
-            }
-        }
-    }
-
-    return ok ? tag : Tag();
 }
 
 void TagFilterWidget::addTag()
@@ -231,4 +197,31 @@ void TagFilterWidget::rowsInserted(const QModelIndex &parent, int start, int end
 {
     QTreeView::rowsInserted(parent, start, end);
     updateGeometry();
+}
+
+QMenu *TagFilterWidget::createContextMenu(QWidget *parent, bool normalItem, const MenuHandler &handler)
+{
+    QMenu *menu = new QMenu(parent);
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+
+    menu->addAction(UIThemeManager::instance()->getIcon(u"list-add"_s), tr("Add tag...")
+        , parent, [handler] { handler(u"addTag"_s); });
+
+    if (normalItem)
+    {
+        menu->addAction(UIThemeManager::instance()->getIcon(u"edit-clear"_s, u"list-remove"_s), tr("Remove tag")
+            , parent, [handler] { handler(u"removeTag"_s); });
+    }
+
+    menu->addAction(UIThemeManager::instance()->getIcon(u"edit-clear"_s, u"list-remove"_s), tr("Remove unused tags")
+        , parent, [handler] { handler(u"removeUnusedTags"_s); });
+    menu->addSeparator();
+    menu->addAction(UIThemeManager::instance()->getIcon(u"torrent-start"_s, u"media-playback-start"_s), tr("Start torrents")
+        , parent, [handler] { handler(u"actionStartTorrentsTriggered"_s); });
+    menu->addAction(UIThemeManager::instance()->getIcon(u"torrent-stop"_s, u"media-playback-pause"_s), tr("Stop torrents")
+        , parent, [handler] { handler(u"actionStopTorrentsTriggered"_s); });
+    menu->addAction(UIThemeManager::instance()->getIcon(u"list-remove"_s), tr("Remove torrents")
+        , parent, [handler] { handler(u"actionDeleteTorrentsTriggered"_s); });
+
+    return menu;
 }

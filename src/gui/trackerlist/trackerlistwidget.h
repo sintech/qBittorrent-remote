@@ -28,6 +28,9 @@
  */
 
 #pragma once
+#include <functional>
+#include <QVariant>
+class QMenu;
 
 #include <QtContainerFwd>
 #include "gui/propertylistviews.h"
@@ -45,6 +48,8 @@ class TrackerListWidget : public TrackerListView
     Q_DISABLE_COPY_MOVE(TrackerListWidget)
 
 public:
+    using MenuHandler = std::function<void(const QString &, const QVariant &)>;
+    static QMenu *createContextMenu(QWidget *parent, bool selected, bool stopped, const MenuHandler &handler);
 #ifdef QBT_REMOTE_CLIENT
     explicit TrackerListWidget(QWidget *parent = nullptr);
 #else

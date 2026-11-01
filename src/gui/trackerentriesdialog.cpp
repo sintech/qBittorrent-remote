@@ -31,6 +31,8 @@
 #include <algorithm>
 
 #include <QHash>
+#include <QSettings>
+#include "base/global.h"
 #include <QList>
 
 #include "base/bittorrent/trackerentry.h"
@@ -42,7 +44,9 @@
 TrackerEntriesDialog::TrackerEntriesDialog(QWidget *parent)
     : QDialog(parent)
     , m_ui(new Ui::TrackerEntriesDialog)
+#ifndef QBT_REMOTE_CLIENT
     , m_storeDialogSize(SETTINGS_KEY(u"Size"_s))
+#endif
 {
     m_ui->setupUi(this);
 
@@ -85,11 +89,20 @@ QList<BitTorrent::TrackerEntry> TrackerEntriesDialog::trackers() const
 
 void TrackerEntriesDialog::saveSettings()
 {
+#ifdef QBT_REMOTE_CLIENT
+    QSettings().setValue(u"remote/trackerDialogSize"_s, size());
+#else
     m_storeDialogSize = size();
+#endif
 }
 
 void TrackerEntriesDialog::loadSettings()
 {
-    if (const QSize dialogSize = m_storeDialogSize; dialogSize.isValid())
+#ifdef QBT_REMOTE_CLIENT
+    const QSize dialogSize = QSettings().value(u"remote/trackerDialogSize"_s).toSize();
+#else
+    const QSize dialogSize = m_storeDialogSize;
+#endif
+    if (dialogSize.isValid())
         resize(dialogSize);
 }

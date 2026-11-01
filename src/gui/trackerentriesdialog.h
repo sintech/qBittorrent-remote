@@ -31,7 +31,9 @@
 #include <QDialog>
 #include <QtContainerFwd>
 
+#ifndef QBT_REMOTE_CLIENT
 #include "base/settingvalue.h"
+#endif
 
 namespace BitTorrent
 {
@@ -60,5 +62,7 @@ private:
     void loadSettings();
 
     Ui::TrackerEntriesDialog *m_ui = nullptr;
+#ifndef QBT_REMOTE_CLIENT
     SettingValue<QSize> m_storeDialogSize;
+#endif
 };
