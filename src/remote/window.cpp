@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "window.h"
+#include "activation.h"
 #include "settingsdialog.h"
 #include <QSystemTrayIcon>
 #include "gui/addnewtorrentdialog.h"
@@ -86,6 +87,7 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     m_table = new TransferListWidget(&m_filter, this);
     m_table->setObjectName(u"remoteTorrentTable"_s);
     m_table->setAcceptDrops(false);
+    setAcceptDrops(true);
     m_table->sortByColumn(1, Qt::AscendingOrder);
     m_properties = new Properties(this);
     const auto view = setupTransferView(m_table, m_properties);
@@ -140,8 +142,13 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     connect(&m_client, &Client::connectedChanged, this, [this](const bool connected)
     {
         updateActions();
+        if (!connected) m_openingSource=false;
         if (connected)
+        {
+            m_sourceConnectionRequested = false;
             statusBar()->clearMessage();
+            QTimer::singleShot(0,this,&Window::processPendingSources);
+        }
     });
     connect(&m_client, &Client::statusChanged, this, [this](const QString &message)
     {
@@ -151,14 +158,23 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     });
     connect(&m_client, &Client::errorOccurred, this, [this](const QString &message)
     {
+        if (!m_client.isConnected()) m_sourceConnectionRequested=false;
         statusBar()->showMessage(message, 15000);
         m_nativeStatus->setConnectionMessage(message);
     });
+    connect(&m_client,&Client::requestFailed,this,[this](const QString &method)
+    { if (method==u"app/preferences") m_openingSource=false; });
     connect(&m_client, &Client::syncReceived, this, &Window::applySync);
     connect(&m_client, &Client::reset, this, [this]
     {
         for (auto *menu : findChildren<QMenu *>()) menu->close();
-        for (auto *dialog : findChildren<AddNewTorrentDialog *>()) dialog->reject();
+        m_openingSource = false;
+        for (auto *dialog : findChildren<AddNewTorrentDialog *>())
+        {
+            const auto source=dialog->property("activationSource").toString();
+            if (dialog->result()!=QDialog::Accepted && !source.isEmpty() && !m_pendingSources.contains(source)) m_pendingSources.prepend(source);
+            dialog->reject();
+        }
         for (auto *dialog : findChildren<TrackerEntriesDialog *>()) dialog->reject();
         ++m_detailGeneration;
         m_model.clear();
@@ -480,7 +496,7 @@ void Window::addFiles()
     const auto paths = QFileDialog::getOpenFileNames(this, tr("Add Torrent File"), {}, tr("Torrent files (*.torrent)"));
     if (paths.isEmpty())
         return;
-    for (const auto &path : paths) showAddDialog(path, true);
+    openSources(paths);
 }
 
 void Window::addLinks()
@@ -488,7 +504,7 @@ void Window::addLinks()
     DownloadFromURLDialog dialog(this);
     connect(&dialog, &DownloadFromURLDialog::urlsReadyToBeDownloaded, this, [this](const QStringList &urls)
     {
-        for (const auto &url : urls) showAddDialog(url, false);
+        openSources(urls);
     });
     dialog.exec();
 }
@@ -499,18 +515,28 @@ void Window::showAddDialog(const QString &source, bool file)
     m_client.get(u"app/preferences"_s, {}, [this, source, file, server](const QByteArray &body)
     {
         if (server != m_client.serverUrl()) return;
+        m_openingSource = false;
         const auto document = QJsonDocument::fromJson(body);
         if (!document.isObject()) { QMessageBox::warning(this, tr("Add torrent"), tr("Could not load server download defaults.")); return; }
         auto preferences = document.object();
         preferences.insert(u"remote_server"_s, server.toString());
         auto *dialog = new AddNewTorrentDialog(source, preferences, m_categories, this, file);
+        m_pendingSources.removeOne(source);
+        m_addDialog=dialog;
+        dialog->setProperty("activationSource",source);
         dialog->setAttribute(Qt::WA_DeleteOnClose);
+        connect(dialog,&QDialog::finished,this,[this]
+        {
+            m_addDialog=nullptr;
+            QTimer::singleShot(0,this,&Window::processPendingSources);
+        });
         connect(dialog, &QDialog::accepted, this, [this, dialog, source, file, server]
         {
-            if (!m_client.isConnected() || server != m_client.serverUrl()) return;
+            if (!m_client.isConnected() || server != m_client.serverUrl())
+            { if (!m_pendingSources.contains(source)) m_pendingSources.prepend(source); return; }
             auto form = dialog->parameters();
             if (file) m_client.addTorrentFile(source, form, dialog->torrentHash(), dialog->filePriorities());
-            else { form.addQueryItem(u"urls"_s, source); m_client.command(u"torrents/add"_s, form); }
+            else { form.addQueryItem(u"urls"_s, QString(source).replace(u'%',u"%25"_s)); m_client.command(u"torrents/add"_s, form); }
         });
         if ((!file || !dialog->torrentHash().isEmpty()) && QSettings().value(u"remote/addDialog/skip"_s, false).toBool())
             QTimer::singleShot(0, dialog, &QDialog::accept);

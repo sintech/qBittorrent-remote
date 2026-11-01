@@ -44,6 +44,7 @@ namespace Remote
         void connectedChanged(bool connected);
         void statusChanged(const QString &message);
         void errorOccurred(const QString &message);
+        void requestFailed(const QString &method);
         void syncReceived(const QJsonObject &data);
         void reset();
 

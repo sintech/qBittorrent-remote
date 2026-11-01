@@ -9,9 +9,12 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../gui" "${CMAKE_CURRENT_SOURCE_DIR}/../gui/properties" "${CMAKE_CURRENT_BINARY_DIR}")
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Network Widgets Svg)
-add_library(qbt_remote STATIC settingsdialog.cpp settingsdialog.h torrentmetadata.cpp torrentmetadata.h profiles.cpp profiles.h profileeditor.cpp profileeditor.h client.cpp client.h torrentmodel.cpp torrentmodel.h window.cpp window.h windowsettings.cpp torrentmenu.cpp properties.cpp properties.h propertymenus.cpp sidebar.cpp sidebar.h
+add_library(qbt_remote STATIC activation.cpp activation.h settingsdialog.cpp settingsdialog.h torrentmetadata.cpp torrentmetadata.h profiles.cpp profiles.h profileeditor.cpp profileeditor.h client.cpp client.h torrentmodel.cpp torrentmodel.h window.cpp window.h windowsettings.cpp windowactivation.cpp torrentmenu.cpp properties.cpp properties.h propertymenus.cpp sidebar.cpp sidebar.h
     ../gui/uithememanager.cpp ../gui/uithememanager.h
     ../gui/uithemesource.cpp ../gui/uithemesource.h
+    ../app/applicationinstancemanager.cpp ../app/applicationinstancemanager.h
+    ../app/qtlocalpeer/qtlocalpeer.cpp ../app/qtlocalpeer/qtlocalpeer.h
+    ../base/utils/bytearray.cpp
     ../base/path.cpp ../base/utils/readfile.cpp
     ../base/tag.cpp ../base/tag.h
     ../gui/transferlistfilters/categoryfiltermodel.cpp ../gui/transferlistfilters/categoryfiltermodel.h
@@ -66,7 +69,10 @@ target_include_directories(qbt_remote PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" "${CM
 qt_add_executable(qbittorrent-remote main.cpp ../icons/icons.qrc)
 target_link_libraries(qbittorrent-remote PRIVATE qbt_remote Qt6::Svg)
 if(WIN32)
-    target_link_libraries(qbt_remote PRIVATE Crypt32)
+    enable_language(RC)
+    configure_file(windows.rc.in "${CMAKE_CURRENT_BINARY_DIR}/remote-windows.rc" @ONLY)
+    target_sources(qbittorrent-remote PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/remote-windows.rc")
+    target_link_libraries(qbt_remote PRIVATE Crypt32 Shell32)
     set_target_properties(qbittorrent-remote PROPERTIES WIN32_EXECUTABLE ON)
 endif()
 option(REMOTE_TESTING "Build remote frontend tests" OFF)

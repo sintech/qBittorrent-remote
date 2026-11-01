@@ -40,6 +40,12 @@
 #include "profiles.h"
 #include "sidebar.h"
 #include "settingsdialog.h"
+#include "activation.h"
+#include "app/applicationinstancemanager.h"
+#include "base/path.h"
+#include <QProcess>
+#include <QScrollArea>
+#include <QTabWidget>
 #include "profileeditor.h"
 #include "gui/transferlistwidget.h"
 #include "gui/transferlistdelegate.h"
@@ -1163,6 +1169,100 @@ private slots:
         QCOMPARE(qvariant_cast<QIcon>(tags->model()->index(0,0).data(Qt::DecorationRole)).cacheKey(),tagIcon.cacheKey());
     }
 
+
+    void settingsUseOnePageWithNativeGroups()
+    {
+        SettingsDialog dialog;
+        QVERIFY(dialog.findChildren<QTabWidget *>().isEmpty());
+        auto *scroll=dialog.findChild<QScrollArea *>();QVERIFY(scroll);QVERIFY(scroll->widgetResizable());
+        const auto groups=dialog.findChildren<QGroupBox *>();QCOMPARE(groups.size(),4);
+        QCOMPARE(groups[0]->title(),SettingsDialog::tr("Interface"));QCOMPARE(groups[3]->title(),SettingsDialog::tr("Desktop"));
+        dialog.show();const auto screenshot=qEnvironmentVariable("REMOTE_SCREENSHOT_PATH");if(!screenshot.isEmpty())QVERIFY(dialog.grab().save(screenshot+u".settings-page.png"));
+    }
+
+    void fileActivationNormalizesPathsAndMagnetMessages()
+    {
+        QTemporaryDir directory;QFile file(directory.filePath(u"тест файл.torrent"_s));QVERIFY(file.open(QIODevice::WriteOnly));file.write("test");file.close();
+        const auto magnet=u"magnet:?xt=urn:btih:abc&dn=Movie%20Title&tr=https%3A%2F%2Ftracker.test%2Fannounce"_s;
+        const auto sources=normalizeSources({u"тест файл.torrent"_s,QUrl::fromLocalFile(file.fileName()).toString(),magnet,u"missing.torrent"_s},directory.path());
+        QCOMPARE(sources.values,QStringList({QFileInfo(file.fileName()).canonicalFilePath(),magnet}));QCOMPARE(sources.errors,QStringList{u"missing.torrent"_s});
+        QStringList decoded;QVERIFY(decodeActivation(activationMessage(sources.values),decoded));QCOMPARE(decoded,sources.values);
+        QVERIFY(!decodeActivation(u"{\"version\":1,\"sources\":[123]}"_s,decoded));
+        QVERIFY(!decodeActivation(u"{\"version\":2,\"sources\":[]}"_s,decoded));
+    }
+
+    void fileAndMagnetRegistrationPreservesExistingDefaults()
+    {
+        QTemporaryDir directory;QSettings registry(directory.filePath(u"registry.ini"_s),QSettings::IniFormat);
+        registry.setValue(u"Software/Classes/.torrent/Default"_s,u"Other.Torrent"_s);
+        registry.setValue(u"Software/Classes/magnet/shell/open/command/Default"_s,u"other.exe %1"_s);
+        registry.setValue(u"Software/Microsoft/Windows/CurrentVersion/Explorer/FileExts/.torrent/UserChoice/ProgId"_s,u"Other.Torrent"_s);
+        const auto exe=directory.filePath(u"app folder/qbittorrent-remote.exe"_s);
+        QVERIFY(registerTorrentHandler(registry,exe));
+        QCOMPARE(registry.value(u"Software/Classes/.torrent/Default"_s).toString(),u"Other.Torrent"_s);
+        QCOMPARE(registry.value(u"Software/Classes/magnet/shell/open/command/Default"_s).toString(),u"other.exe %1"_s);
+        QCOMPARE(registry.value(u"Software/Microsoft/Windows/CurrentVersion/Explorer/FileExts/.torrent/UserChoice/ProgId"_s).toString(),u"Other.Torrent"_s);
+        QCOMPARE(registry.value(u"Software/Classes/qBittorrent.Remote.Torrent/shell/open/command/Default"_s).toString(),QString(u'"'+QDir::toNativeSeparators(exe)+u"\" -- \"%1\""));
+        QCOMPARE(registry.value(u"Software/qBittorrent/qBittorrent-remote/Capabilities/URLAssociations/magnet"_s).toString(),u"qBittorrent.Remote.Magnet"_s);
+        QVERIFY(registry.contains(u"Software/Classes/.torrent/OpenWithProgids/qBittorrent.Remote.Torrent"_s));
+        QCOMPARE(QUrlQuery(defaultApplicationsUrl()).queryItemValue(u"registeredAppUser"_s),u"qBittorrent Remote"_s);
+    }
+
+    void explorerActivationConnectsAndQueuesNativeDialogs()
+    {
+        QTemporaryDir directory;
+        QStringList files;
+        for(const auto &name:{u"first file.torrent"_s,u"second файл.torrent"_s})
+        {QFile file(directory.filePath(name));QVERIFY(file.open(QIODevice::WriteOnly));file.write("d4:infod6:lengthi123e4:name8:file.bin6:pieces20:01234567890123456789ee");file.close();files.append(file.fileName());}
+        auto profile=ProfileStore::create();profile.name=u"Last server"_s;profile.url=QUrl(u"https://example.test/qbt/"_s);QVERIFY(ProfileStore::save({profile}));
+        QSettings().setValue(u"remote/selectedProfile"_s,profile.id);QSettings().setValue(u"remote/desktop/autoConnect"_s,false);
+        Network network;network.responses.insert(u"/qbt/api/v2/app/preferences"_s,{R"({"save_path":"/srv/downloads"})"});
+        Window window(nullptr,&network);window.openSources(files);
+        QTRY_VERIFY(window.client()->isConnected());
+        QTRY_VERIFY(window.findChild<AddNewTorrentDialog *>());
+        auto *first=window.findChild<AddNewTorrentDialog *>();QCOMPARE(first->property("activationSource").toString(),QFileInfo(files[0]).canonicalFilePath());
+        first->reject();QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+        QTRY_VERIFY(window.findChild<AddNewTorrentDialog *>());
+        auto *second=window.findChild<AddNewTorrentDialog *>();QCOMPARE(second->property("activationSource").toString(),QFileInfo(files[1]).canonicalFilePath());
+        second->accept();
+        QTRY_VERIFY(std::any_of(network.sent.cbegin(),network.sent.cend(),[](const auto &sent){return sent.request.url().path().endsWith(u"torrents/add");}));
+        int adds=0;for(const auto &sent:network.sent)adds+=sent.request.url().path().endsWith(u"torrents/add");QCOMPARE(adds,1);
+        const auto magnet=u"magnet:?xt=urn:btih:abc&dn=Browser%20test&tr=https%3A%2F%2Ftracker.test%2Fannounce%3Ftoken%3Da%2526b"_s;
+        window.openSources({magnet});QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
+        QTRY_VERIFY(window.findChild<AddNewTorrentDialog *>());
+        auto *links=window.findChild<AddNewTorrentDialog *>();QCOMPARE(links->property("activationSource").toString(),magnet);links->accept();
+        QTRY_VERIFY(std::any_of(network.sent.cbegin(),network.sent.cend(),[magnet](const auto &sent){return QUrlQuery(QString::fromUtf8(sent.body)).queryItemValue(u"urls"_s,QUrl::FullyDecoded)==magnet;}));
+    }
+
+
+    void activationQueueCanRecoverAfterPreferencesFailure()
+    {
+        QTemporaryDir directory;QFile file(directory.filePath(u"retry.torrent"_s));QVERIFY(file.open(QIODevice::WriteOnly));file.write("d4:infod6:lengthi123e4:name8:file.bin6:pieces20:01234567890123456789ee");file.close();
+        Network network;network.responses.insert(u"/qbt/api/v2/app/preferences"_s,{"unavailable",500});
+        Window window(nullptr,&network);window.client()->connectToServer(keyConnection());QTRY_VERIFY(window.client()->isConnected());
+        QSignalSpy failed(window.client(),&Client::requestFailed);window.openSources({file.fileName()});QTRY_COMPARE(failed.size(),1);
+        QVERIFY(!window.findChild<AddNewTorrentDialog *>());
+        network.responses.insert(u"/qbt/api/v2/app/preferences"_s,{"{}"});window.openSources({file.fileName()});
+        QTRY_VERIFY(window.findChild<AddNewTorrentDialog *>());window.findChild<AddNewTorrentDialog *>()->reject();
+        QVERIFY(std::none_of(network.sent.cbegin(),network.sent.cend(),[](const auto &sent){return sent.request.url().path().endsWith(u"torrents/add");}));
+    }
+
+    void upstreamInstanceManagerForwardsFromAnotherProcess()
+    {
+#ifndef Q_OS_WIN
+        if (qEnvironmentVariableIntValue("QBT_REMOTE_SKIP_LOCAL_SOCKET_TEST")==1)
+            QSKIP("This execution sandbox denies Unix socket creation; the IPC test is required in Windows CI.");
+#endif
+        QTemporaryDir directory;ApplicationInstanceManager instance{Path(directory.path())};QVERIFY(instance.isFirstInstance());
+        QSignalSpy received(&instance,&ApplicationInstanceManager::messageReceived);
+        const auto message=activationMessage({u"C:/Downloads/пример с пробелами.torrent"_s,u"magnet:?xt=urn:btih:abc&dn=Browser%20test"_s});
+        QProcess child;auto environment=QProcessEnvironment::systemEnvironment();environment.insert(u"QT_QPA_PLATFORM"_s,u"offscreen"_s);child.setProcessEnvironment(environment);child.start(QCoreApplication::applicationFilePath(),{u"--activation-test-child"_s,directory.path(),message});
+        QTRY_COMPARE_WITH_TIMEOUT(child.state(),QProcess::NotRunning,15000);
+        QCOMPARE(child.exitCode(),0);QTRY_COMPARE(received.size(),1);QCOMPARE(received.first()[0].toString(),message);
+        QProcess next;next.setProcessEnvironment(environment);next.start(QCoreApplication::applicationFilePath(),{u"--activation-test-child"_s,directory.path(),activationMessage({})});
+        QTRY_COMPARE_WITH_TIMEOUT(next.state(),QProcess::NotRunning,15000);QCOMPARE(next.exitCode(),0);QTRY_COMPARE(received.size(),2);
+    }
+
     void nativeWindowStartsDisconnected()
     {
         Window window;
@@ -1178,5 +1278,16 @@ private slots:
     }
 };
 
-QTEST_MAIN(TestRemote)
+int main(int argc,char **argv)
+{
+    QApplication app(argc,argv);
+    const auto args=app.arguments();
+    if(args.size()==4 && args[1]==u"--activation-test-child")
+    {
+        ApplicationInstanceManager peer{Path(args[2])};
+        if(peer.isFirstInstance())return 21;
+        return peer.sendMessage(args[3])?0:22;
+    }
+    TestRemote tests;return QTest::qExec(&tests,argc,argv);
+}
 #include "test_remote.moc"

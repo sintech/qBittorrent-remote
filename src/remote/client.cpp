@@ -145,6 +145,7 @@ void Client::request(const QString &method, const QUrlQuery &parameters, const b
             QString message = tr("Request %1 failed (HTTP %2).").arg(method).arg(status);
             if (mutation)
                 message += u' ' + tr("It was not retried. Refresh the list before repeating the operation.");
+            emit requestFailed(method);
             emit errorOccurred(message);
             if (((status == 401) || (status == 403))
                 && (!m_connection.apiKey.isEmpty() || (method == u"auth/login")))

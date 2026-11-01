@@ -11,7 +11,12 @@
 #include <QSettings>
 #include <QStyleFactory>
 #include <QStyleHints>
-#include <QTabWidget>
+#include <QScreen>
+#include <QGroupBox>
+#include <QScrollArea>
+#include <QPushButton>
+#include <QDesktopServices>
+#include "activation.h"
 #include <QVBoxLayout>
 #include "base/uidefaults.h"
 #include "gui/fspathedit.h"
@@ -33,14 +38,21 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent), m_originalApp
     setObjectName(u"remoteSettingsDialog"_s);
     setWindowTitle(tr("Client settings"));
     auto *layout = new QVBoxLayout(this);
-    auto *tabs = new QTabWidget(this);
-    layout->addWidget(tabs);
-    const auto page = [tabs](const QString &name)
+    auto *scroll = new QScrollArea(this);
+    scroll->setObjectName(u"settingsScrollArea"_s);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidgetResizable(true);
+    auto *content = new QWidget(scroll);
+    auto *groups = new QVBoxLayout(content);
+    groups->setContentsMargins(0,0,0,0);
+    scroll->setWidget(content);
+    layout->addWidget(scroll);
+    const auto page = [groups, content](const QString &name)
     {
-        auto *widget = new QWidget(tabs);
-        auto *form = new QFormLayout(widget);
+        auto *group = new QGroupBox(name,content);
+        auto *form = new QFormLayout(group);
         form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-        tabs->addTab(widget,name);
+        groups->addWidget(group);
         return form;
     };
     QSettings settings;
@@ -97,11 +109,28 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent), m_originalApp
     auto *closeTray = check(desktop,tr("Close window to the notification area"),u"remote/desktop/closeToTray"_s,false);
     auto *minimizeTray = check(desktop,tr("Minimize to the notification area"),u"remote/desktop/minimizeToTray"_s,false);
     for (auto *box : {closeTray,minimizeTray}) { box->setEnabled(tray->isChecked()); connect(tray,&QCheckBox::toggled,box,&QWidget::setEnabled); }
+#ifdef Q_OS_WIN
+    auto *associate = new QPushButton(tr("Open .torrent files and magnet links with this client…"),this);
+    associate->setObjectName(u"registerTorrentHandler"_s);
+    desktop->addRow(associate);
+    auto *associationNote = new QLabel(tr("Registers this EXE for .torrent files and magnet links, then opens Windows default-app settings. Select qBittorrent Remote there."),this);
+    associationNote->setWordWrap(true);desktop->addRow(associationNote);
+    connect(associate,&QPushButton::clicked,this,[this]
+    {
+        if (!registerTorrentHandler())
+        { QMessageBox::warning(this,tr("Client settings"),tr("Could not register the torrent handlers for this Windows user."));return; }
+        if (!QDesktopServices::openUrl(defaultApplicationsUrl()))
+            QMessageBox::information(this,tr("Client settings"),tr("Registration completed. Choose qBittorrent Remote using Windows Settings > Apps > Default apps, or Open with in Explorer."));
+    });
+#endif
+    groups->addStretch();
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok|QDialogButtonBox::Cancel,this);
     connect(buttons,&QDialogButtonBox::accepted,this,&SettingsDialog::accept);
     connect(buttons,&QDialogButtonBox::rejected,this,&QDialog::reject);
     layout->addWidget(buttons);
-    resize(650,370);
+    const auto available=screen() ? screen()->availableGeometry().size()-QSize(40,80) : QSize(700,780);
+    resize(settings.value(u"remote/settingsDialogSize"_s,QSize(700,780)).toSize().boundedTo(available));
+    connect(this,&QDialog::finished,this,[this] { QSettings().setValue(u"remote/settingsDialogSize"_s,size()); });
 }
 void SettingsDialog::accept()
 {

@@ -13541,6 +13541,26 @@ Please choose a different name and try again.</source>
         <source>Exit</source>
         <translation>Выход</translation>
     </message>
+    <message>
+        <source>Cannot open these torrent sources: %1</source>
+        <translation>Не удалось открыть источники торрентов: %1</translation>
+    </message>
+    <message>
+        <source>Torrent files are waiting for a server connection.</source>
+        <translation>Файлы торрентов ожидают подключения к серверу.</translation>
+    </message>
+    <message>
+        <source>Torrent file no longer exists: %1</source>
+        <translation>Файл торрента больше не существует: %1</translation>
+    </message>
+    <message>
+        <source>Cannot create the client configuration directory.</source>
+        <translation>Не удалось создать каталог конфигурации клиента.</translation>
+    </message>
+    <message>
+        <source>Could not pass the request to the running client. Check that instance before trying again.</source>
+        <translation>Не удалось передать запрос запущенному клиенту. Проверьте его состояние перед повторной попыткой.</translation>
+    </message>
 </context>
 <context>
     <name>Remote::Profiles</name>
@@ -13725,6 +13745,22 @@ Please choose a different name and try again.</source>
     <message>
         <source>Choose an existing .qbtheme file, or clear the theme path.</source>
         <translation>Выберите существующий файл .qbtheme или очистите путь к теме.</translation>
+    </message>
+    <message>
+        <source>Open .torrent files and magnet links with this client…</source>
+        <translation>Открывать файлы .torrent и magnet-ссылки этим клиентом…</translation>
+    </message>
+    <message>
+        <source>Registers this EXE for .torrent files and magnet links, then opens Windows default-app settings. Select qBittorrent Remote there.</source>
+        <translation>Регистрирует этот EXE для файлов .torrent и magnet-ссылок и открывает системные настройки приложений по умолчанию. Выберите там qBittorrent Remote.</translation>
+    </message>
+    <message>
+        <source>Could not register the torrent handlers for this Windows user.</source>
+        <translation>Не удалось зарегистрировать обработчики торрентов для текущего пользователя Windows.</translation>
+    </message>
+    <message>
+        <source>Registration completed. Choose qBittorrent Remote using Windows Settings &gt; Apps &gt; Default apps, or Open with in Explorer.</source>
+        <translation>Регистрация завершена. Выберите qBittorrent Remote в «Параметры Windows → Приложения → Приложения по умолчанию» или через «Открыть с помощью» в Проводнике.</translation>
     </message>
 </context>
 </TS>

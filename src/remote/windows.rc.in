@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+#pragma code_page(65001)
+#include <windows.h>
+101 ICON "@CMAKE_CURRENT_SOURCE_DIR@/../icons/qbittorrent.ico"
+102 ICON "@CMAKE_CURRENT_SOURCE_DIR@/../icons/qbittorrent_file.ico"
+1 VERSIONINFO
+FILEVERSION 5,2,4,0
+PRODUCTVERSION 5,2,4,0
+FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+FILEFLAGS 0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "qBittorrent Remote"
+            VALUE "FileVersion", "5.2.4-remote-preview"
+            VALUE "InternalName", "qbittorrent-remote"
+            VALUE "OriginalFilename", "qbittorrent-remote.exe"
+            VALUE "ProductName", "qBittorrent Remote"
+            VALUE "ProductVersion", "5.2.4-remote-preview"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

@@ -70,6 +70,7 @@ jobs:
           windeployqt --release --no-translations --no-opengl-sw remote-preview/qbittorrent-remote.exe
           Copy-Item COPYING.GPLv2 remote-preview/
           Copy-Item COPYING.GPLv3 remote-preview/
+          Copy-Item doc/remote-third-party.txt remote-preview/
           Copy-Item doc/remote-client.md remote-preview/README.md
       - uses: actions/upload-artifact@v4
         with:

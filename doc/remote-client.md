@@ -63,6 +63,36 @@ message. Editing an active profile's mappings applies immediately. Changing its
 connection details disconnects until reconnect; deleting the active profile also
 disconnects it. Files are accessed through the local filesystem/share.
 
+## Opening from Explorer and browsers
+
+The Windows EXE accepts one or more local `.torrent` paths, `file:` URLs,
+magnet links and HTTP(S) torrent URLs. Paths with spaces and Unicode are supported.
+For example: `qbittorrent-remote.exe -- "C:\Downloads\example.torrent"`.
+Drag torrent files onto the client window to add them through the same flow.
+
+Only one remote client runs per Windows user/configuration directory, using
+qBittorrent's original `ApplicationInstanceManager` and `QtLocalPeer`. Another
+launch forwards its sources to the running client and brings its window forward.
+If disconnected, file activation requests the last selected profile or the profile
+chooser even when automatic startup connection is disabled. Sources wait in memory
+until connection; each opens the original add dialog in order. Cancel skips that
+source; the standard “never show again” preference still applies. Connection resets
+retain pending sources; uploads are never automatically replayed.
+
+In Options > Desktop, click **Open .torrent files and magnet links with this client**.
+It registers candidates for the current Windows user and opens Windows default-app
+settings. Select qBittorrent Remote for `.torrent` and `MAGNET` there. Existing
+default handlers and UserChoice entries are not overwritten. Registration is an
+immediate OS action initiated by that button; Cancel in Options does not undo it.
+Keep the EXE in a stable folder, or register again after moving it.
+
+A browser's downloaded `.torrent` opens via the file association. Clicking a
+magnet link uses the protocol association (the browser may ask for confirmation).
+HTTP torrent links still download normally in the browser; opening that download
+hands the file to the client. No browser extension or download interception is used.
+Close older previews once before testing this first single-instance build; they
+did not listen for forwarded activations.
+
 ## Implemented
 
 - Remote controller inherits the real `MainWindow`; the form, toolbar icons,
@@ -134,7 +164,7 @@ disconnects it. Files are accessed through the local filesystem/share.
   The browser uses its own login/session; client passwords, API keys and cookies
   are not passed in the URL. The action is disabled until connected.
 - Options (toolbar/menu/Alt+O) opens client-local settings, available offline:
-  Interface (language, Qt widget style, system/light/dark palette on Qt 6.8+,
+  A single scrollable page groups Interface (language, Qt widget style, system/light/dark palette on Qt 6.8+,
   optional .qbtheme), Adding torrents, Transfer list (double-click action,
   alternating rows, removal confirmation) and Desktop (last-profile auto-connect,
   minimized startup, always-on-top and notification-area behavior).

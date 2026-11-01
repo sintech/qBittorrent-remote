@@ -6,6 +6,7 @@
 #include <QJsonObject>
 #include "gui/mainwindow.h"
 #include <QTimer>
+#include <QPointer>
 
 #include "client.h"
 #include "profiles.h"
@@ -24,6 +25,9 @@ class QTabWidget;
 class QSystemTrayIcon;
 class QAction;
 class QEvent;
+class QDragEnterEvent;
+class QDropEvent;
+class AddNewTorrentDialog;
 
 namespace Ui { class MainWindow; }
 
@@ -47,13 +51,17 @@ namespace Remote
         void showProfilesDialog();
         void showSettingsDialog();
         void openServerWebUi();
+        void openSources(const QStringList &sources);
         void openRemotePath(const QString &path);
 
     protected:
         void closeEvent(QCloseEvent *event) override;
         void changeEvent(QEvent *event) override;
+        void dragEnterEvent(QDragEnterEvent *event) override;
+        void dropEvent(QDropEvent *event) override;
 
     private:
+        void processPendingSources();
         void applyClientSettings();
         void torrentDoubleClicked();
         QStringList selectedHashes() const;
@@ -78,6 +86,10 @@ namespace Remote
         QSystemTrayIcon *m_tray = nullptr;
         QAction *m_webUiAction = nullptr;
         bool m_forceExit = false;
+        QStringList m_pendingSources;
+        QPointer<AddNewTorrentDialog> m_addDialog;
+        bool m_openingSource = false;
+        bool m_sourceConnectionRequested = false;
         Client m_client;
         TorrentModel m_model;
         TorrentFilter m_filter;
