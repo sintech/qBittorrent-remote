@@ -9,7 +9,7 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC_SEARCH_PATHS "${CMAKE_CURRENT_SOURCE_DIR}/../gui" "${CMAKE_CURRENT_SOURCE_DIR}/../gui/properties" "${CMAKE_CURRENT_BINARY_DIR}")
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Network Widgets Svg)
-add_library(qbt_remote STATIC activation.cpp activation.h settingsdialog.cpp settingsdialog.h torrentmetadata.cpp torrentmetadata.h profiles.cpp profiles.h profileeditor.cpp profileeditor.h client.cpp client.h torrentmodel.cpp torrentmodel.h window.cpp window.h windowsettings.cpp windowactivation.cpp torrentmenu.cpp properties.cpp properties.h propertymenus.cpp sidebar.cpp sidebar.h
+add_library(qbt_remote STATIC activation.cpp activation.h settingsdialog.cpp settingsdialog.h torrentmetadata.cpp torrentmetadata.h profiles.cpp profiles.h profileeditor.cpp profileeditor.h client.cpp client.h torrentmodel.cpp torrentmodel.h window.cpp window.h windowsettings.cpp windowactivation.cpp windowgeometry.cpp torrentmenu.cpp properties.cpp properties.h propertymenus.cpp sidebar.cpp sidebar.h
     ../gui/uithememanager.cpp ../gui/uithememanager.h
     ../gui/uithemesource.cpp ../gui/uithemesource.h
     ../app/applicationinstancemanager.cpp ../app/applicationinstancemanager.h

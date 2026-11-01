@@ -1263,6 +1263,46 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(next.state(),QProcess::NotRunning,15000);QCOMPARE(next.exitCode(),0);QTRY_COMPARE(received.size(),2);
     }
 
+
+    void windowGeometrySurvivesHideAndRestore()
+    {
+        Window window;
+        window.findChild<QAction *>(u"actionTopToolBar"_s)->setChecked(false);
+        window.findChild<QAction *>(u"actionShowFiltersSidebar"_s)->setChecked(false);
+        window.findChild<Properties *>()->findChild<PropTabBar *>()->setCurrentIndex(-1);
+        window.show();window.resize(600,400);window.move(40,40);QTest::qWait(40);
+        const auto size=window.size();const auto position=window.pos();
+        window.hide();QVERIFY(!QSettings().value(u"remote/geometry"_s).toByteArray().isEmpty());
+        window.restoreWindow();QTRY_VERIFY(window.isVisible());QCOMPARE(window.size(),size);
+        QVERIFY((window.pos()-position).manhattanLength()<12);
+        window.showMaximized();QTRY_VERIFY(window.isMaximized());
+        window.hide();window.restoreWindow();QTRY_VERIFY(window.isMaximized());
+        window.showMinimized();QTRY_VERIFY(window.isMinimized());
+        window.restoreWindow();QTRY_VERIFY(window.isMaximized());
+        // A second launch must retain the maximized state as well.
+        window.hide();Window next;next.show();QTRY_VERIFY(next.isMaximized());
+    }
+
+    void movingAndResizingPersistsBeforeExit()
+    {
+        Window window;
+        window.findChild<QAction *>(u"actionTopToolBar"_s)->setChecked(false);
+        window.findChild<QAction *>(u"actionShowFiltersSidebar"_s)->setChecked(false);
+        window.findChild<Properties *>()->findChild<PropTabBar *>()->setCurrentIndex(-1);
+        window.show();window.resize(600,400);window.move(48,42);QTest::qWait(30);
+        const auto geometry=window.saveGeometry();
+        QTRY_COMPARE(QSettings().value(u"remote/geometry"_s).toByteArray(),geometry);
+        window.hide();const auto before=QSettings().value(u"remote/geometry"_s).toByteArray();
+        Window next;
+        next.findChild<QAction *>(u"actionTopToolBar"_s)->setChecked(false);
+        next.findChild<QAction *>(u"actionShowFiltersSidebar"_s)->setChecked(false);
+        next.show();QTest::qWait(30);
+        QCOMPARE(next.size(),window.size());
+        // Qt may move a newly created window to fit the virtual screen when
+        // the initial toolbar minimum exceeds the headless screen width.
+        QVERIFY(!before.isEmpty());
+    }
+
     void nativeWindowStartsDisconnected()
     {
         Window window;

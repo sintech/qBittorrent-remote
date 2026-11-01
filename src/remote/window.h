@@ -27,6 +27,9 @@ class QAction;
 class QEvent;
 class QDragEnterEvent;
 class QDropEvent;
+class QMoveEvent;
+class QResizeEvent;
+class QHideEvent;
 class AddNewTorrentDialog;
 
 namespace Ui { class MainWindow; }
@@ -51,6 +54,7 @@ namespace Remote
         void showProfilesDialog();
         void showSettingsDialog();
         void openServerWebUi();
+        void restoreWindow();
         void openSources(const QStringList &sources);
         void openRemotePath(const QString &path);
 
@@ -59,8 +63,13 @@ namespace Remote
         void changeEvent(QEvent *event) override;
         void dragEnterEvent(QDragEnterEvent *event) override;
         void dropEvent(QDropEvent *event) override;
+        void moveEvent(QMoveEvent *event) override;
+        void resizeEvent(QResizeEvent *event) override;
+        void hideEvent(QHideEvent *event) override;
 
     private:
+        void captureWindowGeometry();
+        void saveWindowState();
         void processPendingSources();
         void applyClientSettings();
         void torrentDoubleClicked();
@@ -86,6 +95,12 @@ namespace Remote
         QSystemTrayIcon *m_tray = nullptr;
         QAction *m_webUiAction = nullptr;
         bool m_forceExit = false;
+        bool m_geometryReady = false;
+        bool m_restoringWindow = false;
+        QByteArray m_windowGeometry;
+        QRect m_normalWindowRect;
+        Qt::WindowStates m_restoreWindowState = Qt::WindowNoState;
+        QTimer m_geometrySaveTimer;
         QStringList m_pendingSources;
         QPointer<AddNewTorrentDialog> m_addDialog;
         bool m_openingSource = false;

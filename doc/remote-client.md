@@ -157,7 +157,8 @@ did not listen for forwarded activations.
 - Original SpeedWidget/SpeedPlotView with all seven time ranges. History starts
   at connection and survives torrent selection. The API exposes payload upload/
   download rates; unavailable overhead/DHT/tracker series are disabled. Switching
-  servers clears history.
+  servers clears history. The 5.2.4 API supplies current rates and cumulative
+  counters, not historical graph samples from before client connection.
 - Tools > Server Web UI opens the connected server's Web UI in the
   default browser, preserving any reverse-proxy prefix. Use the gear icon there
   for server settings: the stock 5.2.4 Web UI has no standalone settings URL.
@@ -170,7 +171,9 @@ did not listen for forwarded activations.
   minimized startup, always-on-top and notification-area behavior).
   Appearance/language changes require a restart; behavior changes apply on Save.
   Cancel discards drafts. Closing to the notification area requires an available,
-  visible tray icon; Exit always exits. Disabling removal confirmation never
+  visible tray icon; Exit always exits. Window geometry is saved when moved,
+  resized or hidden, and tray/activation restoration preserves the normal rectangle
+  and maximized/fullscreen state instead of forcing a normal window. Disabling removal confirmation never
   deletes the downloaded server files.
 - Column widths, order, sorting and visible-column choices persist for the main
   table and property tables. The internal peers IP column is never exposed,
@@ -215,3 +218,6 @@ The automated tests use an injected `QNetworkAccessManager` with scripted Qt
 network replies. They cover protocol requests and asynchronous behavior without
 requiring access to a live server. Live-server verification and native Windows
 verification must be reported separately from these tests.
+
+A proposed R-badge application icon is in `doc/assets/remote-icon-proposal.svg`.
+It is a review proposal only; executable/tray/document icons remain unchanged.

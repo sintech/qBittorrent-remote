@@ -13,7 +13,7 @@ using namespace Qt::StringLiterals;
 using namespace Remote;
 void Window::openSources(const QStringList &sources)
 {
-    showNormal();raise();activateWindow();
+    restoreWindow();
     const auto normalized=normalizeSources(sources,QDir::currentPath());
     if (!normalized.errors.isEmpty()) statusBar()->showMessage(tr("Cannot open these torrent sources: %1").arg(normalized.errors.join(u", "_s)),15000);
     for (const auto &source : normalized.values)

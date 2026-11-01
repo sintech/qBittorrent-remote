@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QDesktopServices>
 #include <QEvent>
+#include <QWindowStateChangeEvent>
 #include <QMenu>
 #include <QSettings>
 #include <QStatusBar>
@@ -40,8 +41,9 @@ void Window::applyClientSettings()
     if (windowFlags().testFlag(Qt::WindowStaysOnTopHint) != onTop)
     {
         const bool visible = isVisible();
+        captureWindowGeometry();
         setWindowFlag(Qt::WindowStaysOnTopHint,onTop);
-        if (visible) show();
+        if (visible) restoreWindow();
     }
     const bool enabled = settings.value(u"remote/desktop/tray"_s,false).toBool() && QSystemTrayIcon::isSystemTrayAvailable();
     if (enabled && !m_tray)
@@ -49,28 +51,40 @@ void Window::applyClientSettings()
         m_tray = new QSystemTrayIcon(windowIcon(),this);
         m_tray->setToolTip(u"qBittorrent Remote"_s);
         auto *menu = new QMenu(this);
-        menu->addAction(tr("Show window"),this,[this] { showNormal(); raise(); activateWindow(); });
+        menu->addAction(tr("Show window"),this,[this] { restoreWindow(); });
         menu->addAction(tr("Client settings…"),this,&Window::showSettingsDialog);
         menu->addAction(m_webUiAction);
         menu->addSeparator();
         menu->addAction(tr("Exit"),this,[this] { m_forceExit = true; close(); QCoreApplication::quit(); });
         m_tray->setContextMenu(menu);
         connect(m_tray,&QSystemTrayIcon::activated,this,[this](QSystemTrayIcon::ActivationReason reason)
-        { if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) { showNormal(); raise(); activateWindow(); } });
+        { if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) { restoreWindow(); } });
     }
     if (m_tray)
     {
         const bool hiddenToTray = m_tray->isVisible() && !isVisible();
         m_tray->setVisible(enabled);
-        if (!enabled && hiddenToTray) showNormal();
+        if (!enabled && hiddenToTray) restoreWindow();
     }
 }
 void Window::changeEvent(QEvent *event)
 {
     MainWindow::changeEvent(event);
-    if (event->type() == QEvent::WindowStateChange && isMinimized() && m_tray && m_tray->isVisible()
-        && QSettings().value(u"remote/desktop/minimizeToTray"_s,false).toBool())
-        QTimer::singleShot(0,this,[this] { if (isMinimized() && m_tray && m_tray->isVisible()) hide(); });
+    if (!m_geometryReady || m_restoringWindow || event->type()!=QEvent::WindowStateChange) return;
+    if (isMinimized())
+    {
+        const auto *change=static_cast<QWindowStateChangeEvent *>(event);
+        if (!change->oldState().testFlag(Qt::WindowMinimized))
+            m_restoreWindowState=change->oldState() & (Qt::WindowMaximized | Qt::WindowFullScreen);
+        saveWindowState();
+        if (m_tray && m_tray->isVisible() && QSettings().value(u"remote/desktop/minimizeToTray"_s,false).toBool())
+            QTimer::singleShot(0,this,[this] { if(isMinimized() && m_tray && m_tray->isVisible()) hide(); });
+    }
+    else
+    {
+        captureWindowGeometry();
+        m_geometrySaveTimer.start();
+    }
 }
 void Window::torrentDoubleClicked()
 {

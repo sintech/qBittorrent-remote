@@ -213,6 +213,13 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
         m_table->header()->restoreState(header);
     m_vertical->restoreState(settings.value(u"remote/nativeVertical"_s).toByteArray());
     m_horizontal->restoreState(settings.value(u"remote/nativeHorizontal"_s).toByteArray());
+    m_windowGeometry=saveGeometry();
+    m_normalWindowRect=normalGeometry().isValid() ? normalGeometry() : geometry();
+    m_restoreWindowState=windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen);
+    m_geometryReady=true;
+    m_geometrySaveTimer.setSingleShot(true);
+    m_geometrySaveTimer.setInterval(200);
+    connect(&m_geometrySaveTimer,&QTimer::timeout,this,&Window::saveWindowState);
     applyClientSettings();
     updateActions();
     updateFilters();
@@ -227,13 +234,9 @@ Client *Window::client()
 
 void Window::closeEvent(QCloseEvent *event)
 {
+    saveWindowState();
     if (!m_forceExit && m_tray && m_tray->isVisible() && QSettings().value(u"remote/desktop/closeToTray"_s,false).toBool())
     { event->ignore(); hide(); return; }
-    QSettings settings;
-    settings.setValue(u"remote/geometry"_s, saveGeometry());
-    settings.setValue(u"remote/nativeHeader"_s, m_table->header()->saveState());
-    settings.setValue(u"remote/nativeVertical"_s, m_vertical->saveState());
-    settings.setValue(u"remote/nativeHorizontal"_s, m_horizontal->saveState());
     m_client.disconnectFromServer();
     MainWindow::closeEvent(event);
 }
