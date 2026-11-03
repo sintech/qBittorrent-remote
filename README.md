@@ -1,46 +1,30 @@
-> **Remote frontend preview:** see [build instructions and current limitations](doc/remote-client.md). Targets qBittorrent 5.2.x.
+# qBittorrent Remote
 
-qBittorrent - A BitTorrent client in Qt
-------------------------------------------
+qBittorrent Remote is a native desktop client for a standard qBittorrent server. It connects to the server through the built-in Web UI API at `/api/v2/`. An unmodified installation of qBittorrent or `qbittorrent-nox` with Web UI enabled is sufficient. The server handles torrent transfers, search plugins, and logs.
 
-[![GitHub Actions CI Status](https://github.com/qbittorrent/qBittorrent/actions/workflows/ci_ubuntu.yaml/badge.svg)](https://github.com/qbittorrent/qBittorrent/actions)
-[![Coverity Status](https://scan.coverity.com/projects/5494/badge.svg)](https://scan.coverity.com/projects/5494)
-********************************
-### Description:
-qBittorrent is a bittorrent client programmed in C++ / Qt that uses
-libtorrent (sometimes called libtorrent-rasterbar) by Arvid Norberg.
+## Server compatibility
 
-It aims to be a good alternative to all other bittorrent clients
-out there. qBittorrent is fast, stable and provides unicode
-support as well as many features.
+The client checks both the qBittorrent version and the Web API version on connection. It supports qBittorrent 5.2.x and 5.3.x with Web API 2.x, starting at 2.15.1.
 
-The free [IP to Country Lite database](https://db-ip.com/db/download/ip-to-country-lite) by [DB-IP](https://db-ip.com/) is used for resolving the countries of peers. The database is licensed under the [Creative Commons Attribution 4.0 International License](https://creativecommons.org/licenses/by/4.0/).
+| Server family | Reference server | Web API |
+| --- | --- | --- |
+| qBittorrent 5.2.x | 5.2.4 | 2.15.1 |
+| qBittorrent 5.3.x | 5.3.0 | 2.16.2 |
 
-### Installation:
+The reference versions were checked against upstream source and automated API fixtures.
 
-Refer to the [INSTALL](INSTALL) file.
+## Getting started
 
-### Public key:
-Starting from v3.3.4 all source tarballs and binaries are signed.<br />
-The key currently used is 4096R/[5B7CC9A2](https://pgp.mit.edu/pks/lookup?op=get&search=0x6E4A2D025B7CC9A2) with fingerprint `D8F3DA77AAC6741053599C136E4A2D025B7CC9A2`.<br />
-You can also download it from [here](https://github.com/qbittorrent/qBittorrent/raw/master/5B7CC9A2.asc).<br />
-**PREVIOUSLY** the following key was used to sign the v3.3.4 source tarballs and v3.3.4 Windows installer **only**: 4096R/[520EC6F6](https://pgp.mit.edu/pks/lookup?op=get&search=0xA1ACCAE4520EC6F6) with fingerprint `F4A5FD201B117B1C2AB590E2A1ACCAE4520EC6F6`.<br />
+1. Enable Web UI on your qBittorrent server.
+2. Open **Tools → Connection profiles** in qBittorrent Remote and enter the server's Web UI address and credentials.
+3. Select **Save and connect**.
 
-### Misc:
-For more information please visit:
-https://www.qbittorrent.org
+Manage transfers, add torrent files or magnet links, search with server-side plugins, and view the server's execution log. Optional folder mappings let you open downloaded content through a local path or network share.
 
-or our wiki here:
-https://wiki.qbittorrent.org
+See the [setup guide, build instructions, and limitations](doc/remote-client.md).
 
-Use the forum for troubleshooting before reporting bugs:
-https://forum.qbittorrent.org
+## Upstream and license
 
-Please report any bug (or feature request) to:
-https://bugs.qbittorrent.org
+The desktop interface is based on qBittorrent 5.2.4 and reuses its Qt widgets and forms. Upstream project and source code are available at [qbittorrent/qBittorrent](https://github.com/qbittorrent/qBittorrent).
 
-Official IRC channel:
-[#qbittorrent on irc.libera.chat](ircs://irc.libera.chat:6697/qbittorrent)
-
-------------------------------------------
-sledgehammer999 \<sledgehammer999@qbittorrent.org\>
+See [AUTHORS](AUTHORS), [COPYING](COPYING), and [third-party notices](doc/remote-third-party.txt). The source is licensed under GPL-2.0-or-later. Binary distributions are licensed under GPL-3.0-or-later because they include GPL-3.0-or-later assets.
