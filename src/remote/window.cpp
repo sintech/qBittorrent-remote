@@ -66,7 +66,7 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
 {
     UIThemeManager::initInstance();
     // Reuse the unmodified upstream window, menus and toolbar, not a web view.
-    setWindowTitle(u"qBittorrent Remote — 5.2.4"_s);
+    setWindowTitle(u"qBittorrent Remote — %1"_s.arg(QString::fromLatin1(QBT_REMOTE_VERSION)));
     setWindowIcon(QIcon(u":/remote-icons/application.ico"_s));
     // An unfinished action must never look operational or act on a local session.
     for (auto *action : findChildren<QAction *>())
@@ -191,7 +191,7 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     connect(m_ui->actionAbout, &QAction::triggered, this, [this]
     { QMessageBox::about(this, tr("qBittorrent Remote"), tr("Remote frontend for qBittorrent 5.2.x / 5.3.x.\nUses the original qBittorrent window form. GPL v2 or later.")); });
     connect(m_ui->actionDocumentation, &QAction::triggered, this, []
-    { QDesktopServices::openUrl(QUrl(u"https://github.com/sintech/qBittorrent-remote/blob/feature/remote-api-5.2.4/doc/remote-client.md"_s)); });
+    { QDesktopServices::openUrl(QUrl(u"https://github.com/sintech/qBittorrent-remote/blob/master/doc/remote-client.md"_s)); });
     const auto bindVisibility = [this](QAction *action, QWidget *widget)
     {
         const QString key = u"remote/view/"_s + action->objectName();
@@ -398,7 +398,7 @@ void Window::editProfiles(const bool offerConnection)
         {
             m_client.disconnectFromServer();
             m_activeProfile = {};
-            setWindowTitle(u"qBittorrent Remote — 5.2.4"_s);
+            setWindowTitle(u"qBittorrent Remote — %1"_s.arg(QString::fromLatin1(QBT_REMOTE_VERSION)));
             QSettings().remove(u"remote/selectedProfile"_s);
         }
         else

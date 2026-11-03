@@ -4,8 +4,8 @@
 101 ICON "@CMAKE_CURRENT_SOURCE_DIR@/assets/qbittorrent-remote.ico"
 102 ICON "@CMAKE_CURRENT_SOURCE_DIR@/../icons/qbittorrent_file.ico"
 1 VERSIONINFO
-FILEVERSION 5,2,4,0
-PRODUCTVERSION 5,2,4,0
+FILEVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+PRODUCTVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
 FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
 FILEFLAGS 0
 FILEOS VOS_NT_WINDOWS32
@@ -16,11 +16,11 @@ BEGIN
         BLOCK "040904B0"
         BEGIN
             VALUE "FileDescription", "qBittorrent Remote"
-            VALUE "FileVersion", "5.2.4-remote-preview"
+            VALUE "FileVersion", "@PROJECT_VERSION@"
             VALUE "InternalName", "qbittorrent-remote"
             VALUE "OriginalFilename", "qbittorrent-remote.exe"
             VALUE "ProductName", "qBittorrent Remote"
-            VALUE "ProductVersion", "5.2.4-remote-preview"
+            VALUE "ProductVersion", "@PROJECT_VERSION@"
         END
     END
     BLOCK "VarFileInfo"

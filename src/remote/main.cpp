@@ -24,7 +24,7 @@ int main(int argc, char **argv)
     QApplication::setWindowIcon(QIcon(u":/remote-icons/application.ico"_s));
     QCoreApplication::setOrganizationName(u"qBittorrent"_s);
     QCoreApplication::setApplicationName(u"qBittorrent-remote"_s);
-    QCoreApplication::setApplicationVersion(u"5.2.4-remote-preview"_s);
+    QCoreApplication::setApplicationVersion(QString::fromLatin1(QBT_REMOTE_VERSION));
     QCommandLineParser parser;
     parser.setApplicationDescription(u"Native qBittorrent remote client"_s);
     parser.addHelpOption();parser.addVersionOption();

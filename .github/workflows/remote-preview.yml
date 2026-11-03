@@ -2,7 +2,7 @@ name: Remote frontend preview
 
 on:
   push:
-    branches: ['feature/remote-api-5.2.4']
+    branches: [master, 'feature/remote-api-5.2.4']
     paths:
       - 'src/remote/**'
       - 'src/gui/**'
@@ -69,7 +69,7 @@ jobs:
           New-Item -ItemType Directory -Path remote-preview
           Copy-Item build-remote/Release/qbittorrent-remote.exe remote-preview/
           windeployqt --release --no-translations --no-opengl-sw remote-preview/qbittorrent-remote.exe
-          Copy-Item COPYING.GPLv2 remote-preview/
+          Copy-Item AUTHORS,COPYING,COPYING.GPLv2 remote-preview/
           Copy-Item COPYING.GPLv3 remote-preview/
           Copy-Item doc/remote-third-party.txt remote-preview/
           Copy-Item doc/remote-client.md remote-preview/README.md
@@ -77,3 +77,51 @@ jobs:
         with:
           name: qbittorrent-remote-windows-x64-preview
           path: remote-preview/
+
+  release:
+    name: Publish Windows release
+    needs: build
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: qbittorrent-remote-windows-x64-preview
+          path: portable
+      - name: Publish versioned archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(cat src/remote/VERSION)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          if gh release view "$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $version already exists."
+            exit 0
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$version" >/dev/null; then
+            echo "::error::Tag $version already exists. Choose an unused version."
+            exit 1
+          else
+            status=$?
+            test "$status" -eq 2
+          fi
+          archive="qbittorrent-remote-$version-windows-x64.zip"
+          (cd portable && zip -qr "../$archive" .)
+          cat > release-notes.md <<'NOTES'
+          Native desktop client for an unmodified qBittorrent or qbittorrent-nox server with Web UI enabled.
+
+          - Portable Windows x64 build with Qt libraries.
+          - Supports qBittorrent 5.2.x and 5.3.x with Web API 2.x from 2.15.1.
+          - Manage transfers, add torrents, search using server plugins, and view the server log.
+          - Includes server path suggestions, recent paths, and tracker merge prompts for recognized duplicates.
+
+          The interface is based on [qBittorrent 5.2.4](https://github.com/qbittorrent/qBittorrent).
+          NOTES
+          gh release create "$version" "$archive" --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "qBittorrent Remote $version" --notes-file release-notes.md
