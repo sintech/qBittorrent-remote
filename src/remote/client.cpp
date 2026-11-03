@@ -98,7 +98,7 @@ void Client::setConnected(const bool connected)
 }
 
 void Client::request(const QString &method, const QUrlQuery &parameters, const bool post,
-    Callback callback, const bool mutation, QHttpMultiPart *multipart)
+    Callback callback, const bool mutation, QHttpMultiPart *multipart, const bool optional)
 {
     if (!m_running)
     {
@@ -134,7 +134,7 @@ void Client::request(const QString &method, const QUrlQuery &parameters, const b
 
     m_pending.insert(reply);
     const quint64 generation = m_generation;
-    connect(reply, &QNetworkReply::finished, this, [this, reply, callback, mutation, method, generation]
+    connect(reply, &QNetworkReply::finished, this, [this, reply, callback, mutation, method, generation, optional]
     {
         m_pending.remove(reply);
         reply->deleteLater();
@@ -145,6 +145,11 @@ void Client::request(const QString &method, const QUrlQuery &parameters, const b
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if ((reply->error() != QNetworkReply::NoError) || (status < 200) || (status >= 300))
         {
+            if (optional && status > 0 && status != 401 && status != 403)
+            {
+                callback({});
+                return;
+            }
             // Do not include response bodies/URLs: a proxy may echo credentials.
             QString message = tr("Request %1 failed (HTTP %2).").arg(method).arg(status);
             if (mutation)
@@ -315,6 +320,12 @@ void Client::addTorrentFile(const QString &path, const QUrlQuery &parameters, co
             applyFilePriorities(hash, priorities, startAfterPriorities);
         m_pollTimer.start(0);
     }, true, multipart);
+}
+
+void Client::probe(const QString &method, const QUrlQuery &parameters, bool post, Callback callback)
+{
+    if (m_connected)
+        request(method, parameters, post, std::move(callback), false, nullptr, true);
 }
 
 void Client::get(const QString &method, const QUrlQuery &parameters, Callback callback)

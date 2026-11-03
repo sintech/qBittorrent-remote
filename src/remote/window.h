@@ -31,6 +31,7 @@ class QMoveEvent;
 class QResizeEvent;
 class QHideEvent;
 class AddNewTorrentDialog;
+class FileSystemPathEdit;
 
 namespace Ui { class MainWindow; }
 
@@ -82,7 +83,10 @@ namespace Remote
         void removeSelected();
         void addFiles();
         void addLinks();
-        void showAddDialog(const QString &source, bool file, bool forceDialog = false);
+        bool handleDuplicateSource(const QString &source, bool file, const QJsonObject &preferences, const QJsonObject &metadata);
+        void inspectUrlSource(const QString &source, bool forceDialog, int attempts = 0);
+        void setupPathCompletion(FileSystemPathEdit *path);
+        void showAddDialog(const QString &source, bool file, bool forceDialog = false, const QJsonObject &metadata = {});
         void editTrackers(const QStringList &hashes);
         void sidebarCommand(const QString &kind, const QString &operation, const QString &value);
         void showContextMenu(const QPoint &position);
@@ -107,6 +111,7 @@ namespace Remote
         QTimer m_geometrySaveTimer;
         QStringList m_pendingSources;
         QSet<QString> m_forceDialogSources;
+        QSet<QString> m_skipDialogSources;
         QPointer<AddNewTorrentDialog> m_addDialog;
         bool m_openingSource = false;
         bool m_sourceConnectionRequested = false;

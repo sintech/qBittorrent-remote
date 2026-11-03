@@ -34,6 +34,12 @@ AddNewTorrentDialog::AddNewTorrentDialog(const QString &source, const QJsonObjec
     const QString historyKey = u"remote/addDialog/"_s + QString::fromLatin1(QUrl(preferences.value(u"remote_server"_s).toString()).toEncoded().toBase64());
     setProperty("historyKey", historyKey);
     QSettings settings;
+    for (auto *path : {m_ui->savePath, m_ui->downloadPath})
+    {
+        auto *combo = path->findChild<QComboBox *>();
+        combo->setInsertPolicy(QComboBox::NoInsert);
+        combo->addItems(settings.value(historyKey + u"/history/" + path->objectName()).toStringList());
+    }
     m_ui->savePath->setPathText(settings.value(historyKey + u"/savePath", preferences.value(u"save_path"_s).toString()).toString());
     m_ui->downloadPath->setPathText(preferences.value(u"temp_path"_s).toString());
     m_ui->groupBoxDownloadPath->setChecked(preferences.value(u"temp_path_enabled"_s).toBool());
@@ -181,6 +187,20 @@ AddNewTorrentDialog::AddNewTorrentDialog(const QString &source, const QJsonObjec
         settings.setValue(historyKey + u"/remember", m_ui->checkBoxRememberLastSavePath->isChecked());
         if (m_ui->checkBoxRememberLastSavePath->isChecked()) settings.setValue(historyKey + u"/savePath", m_ui->savePath->pathText());
         else settings.remove(historyKey + u"/savePath");
+        if (m_ui->comboTMM->currentIndex() == 0)
+        {
+            for (auto *path : {m_ui->savePath, m_ui->downloadPath})
+            {
+                if (path == m_ui->downloadPath && !m_ui->groupBoxDownloadPath->isChecked()) continue;
+                const auto value = path->pathText();
+                if (value.isEmpty()) continue;
+                const QString key = historyKey + u"/history/" + path->objectName();
+                auto history = settings.value(key).toStringList();
+                history.removeAll(value);
+                history.prepend(value);
+                settings.setValue(key, history.mid(0, 20));
+            }
+        }
         if (m_ui->defaultCategoryCheckbox->isChecked()) settings.setValue(historyKey + u"/category", m_ui->categoryComboBox->currentText());
     });
     resize(settings.value(u"remote/addDialog/size", size()).toSize());

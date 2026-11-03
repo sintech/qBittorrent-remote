@@ -9,6 +9,8 @@ namespace Remote
         QString name, comment, hashV1, hashV2;
         QDateTime created;
         QStringList files;
+        QStringList trackers;
+        bool isPrivate = false;
         QList<qint64> sizes;
         QString error;
         bool valid() const { return error.isEmpty() && !files.isEmpty(); }

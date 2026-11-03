@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "window.h"
 #include "activation.h"
+#include "torrentmetadata.h"
+#include "gui/fspathedit.h"
+#include <QCompleter>
+#include <QStringListModel>
 #include "settingsdialog.h"
 #include <QSystemTrayIcon>
 #include "gui/addnewtorrentdialog.h"
@@ -83,7 +87,12 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     m_webUiAction = m_ui->menuOptions->addAction(UIThemeManager::instance()->getIcon(u"network-server"_s),tr("Server Web UI…"));
     m_webUiAction->setObjectName(u"actionServerWebUi"_s);
     connect(m_webUiAction,&QAction::triggered,this,&Window::openServerWebUi);
-    m_ui->menuAutoShutdownOnDownloadsCompletion->setEnabled(false);
+    for (auto *action : {m_ui->actionPauseSession, m_ui->actionResumeSession,
+        m_ui->actionCheckForUpdates, m_ui->actionDonateMoney, m_ui->actionCreateTorrent,
+        m_ui->actionManageCookies, m_ui->actionSpeedInTitleBar, m_ui->actionRSSReader,
+        m_ui->actionStatistics, m_ui->actionLock,
+        m_ui->menuAutoShutdownOnDownloadsCompletion->menuAction()})
+        action->setVisible(false);
     m_ui->menuLog->setEnabled(true);
 
     m_filter.setSourceModel(&m_model);
@@ -160,10 +169,13 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     connect(m_searchPanel,&SearchWidget::sourceRequested,this,[this](const QString &source,AddTorrentOption option)
     {
         if(!m_client.isConnected()) return;
-        if(option==AddTorrentOption::SkipDialog)
-        { QUrlQuery q;q.addQueryItem(u"urls"_s,QString(source).replace(u'%',u"%25"_s));m_client.command(u"torrents/add"_s,q); }
-        else if(option==AddTorrentOption::ShowDialog) { for(const auto &normalized:normalizeSources({source},QDir::currentPath()).values) m_forceDialogSources.insert(normalized);openSources({source}); }
-        else openSources({source});
+        const auto normalized = normalizeSources({source}, QDir::currentPath()).values;
+        for (const auto &value : normalized)
+        {
+            if (option == AddTorrentOption::SkipDialog) m_skipDialogSources.insert(value);
+            if (option == AddTorrentOption::ShowDialog) m_forceDialogSources.insert(value);
+        }
+        openSources(normalized);
     });
 
     m_nativeStatus = new StatusBar(this);
@@ -180,9 +192,26 @@ Window::Window(QWidget *parent, QNetworkAccessManager *network)
     { QMessageBox::about(this, tr("qBittorrent Remote"), tr("Remote frontend for qBittorrent 5.2.x / 5.3.x.\nUses the original qBittorrent window form. GPL v2 or later.")); });
     connect(m_ui->actionDocumentation, &QAction::triggered, this, []
     { QDesktopServices::openUrl(QUrl(u"https://github.com/sintech/qBittorrent-remote/blob/feature/remote-api-5.2.4/doc/remote-client.md"_s)); });
-    connect(m_ui->actionTopToolBar, &QAction::toggled, m_ui->toolBar, &QWidget::setVisible);
-    connect(m_ui->actionShowStatusbar, &QAction::toggled, statusBar(), &QWidget::setVisible);
-    connect(m_ui->actionShowFiltersSidebar, &QAction::toggled, m_sidebar, &QWidget::setVisible);
+    const auto bindVisibility = [this](QAction *action, QWidget *widget)
+    {
+        const QString key = u"remote/view/"_s + action->objectName();
+        widget->setVisible(QSettings().value(key, true).toBool());
+        const auto synchronize = [action, widget]
+        {
+            const QSignalBlocker blocker(action);
+            action->setChecked(!widget->isHidden());
+        };
+        synchronize();
+        connect(m_ui->menuView, &QMenu::aboutToShow, this, synchronize);
+        connect(action, &QAction::toggled, widget, [widget, key](bool visible)
+        {
+            widget->setVisible(visible);
+            QSettings().setValue(key, visible);
+        });
+    };
+    bindVisibility(m_ui->actionTopToolBar, m_ui->toolBar);
+    bindVisibility(m_ui->actionShowStatusbar, statusBar());
+    bindVisibility(m_ui->actionShowFiltersSidebar, m_sidebar);
     connect(m_ui->actionOpen, &QAction::triggered, this, &Window::addFiles);
     connect(m_ui->actionDownloadFromURL, &QAction::triggered, this, &Window::addLinks);
     connect(m_ui->actionDelete, &QAction::triggered, this, &Window::removeSelected);
@@ -579,25 +608,48 @@ void Window::addLinks()
     dialog.exec();
 }
 
-void Window::showAddDialog(const QString &source, bool file, bool forceDialog)
+void Window::showAddDialog(const QString &source, bool file, bool forceDialog, const QJsonObject &metadata)
 {
     const auto server = m_client.serverUrl();
-    m_client.get(u"app/preferences"_s, {}, [this, source, file, server, forceDialog](const QByteArray &body)
+    m_client.get(u"app/preferences"_s, {}, [this, source, file, server, forceDialog, metadata](const QByteArray &body)
     {
         if (server != m_client.serverUrl()) return;
-        m_openingSource = false;
         const auto document = QJsonDocument::fromJson(body);
-        if (!document.isObject()) { QMessageBox::warning(this, tr("Add torrent"), tr("Could not load server download defaults.")); return; }
+        if (!document.isObject()) { m_openingSource = false; QMessageBox::warning(this, tr("Add torrent"), tr("Could not load server download defaults.")); return; }
         auto preferences = document.object();
         preferences.insert(u"remote_server"_s, server.toString());
+        const auto connection = m_client.connectionGeneration();
+        if (handleDuplicateSource(source, file, preferences, metadata))
+        {
+            if (connection != m_client.connectionGeneration()) return;
+            m_openingSource = false;
+            m_pendingSources.removeOne(source);
+            m_forceDialogSources.remove(source);
+            m_skipDialogSources.remove(source);
+            QTimer::singleShot(0, this, &Window::processPendingSources);
+            return;
+        }
+        m_openingSource = false;
+        if (!forceDialog && m_skipDialogSources.remove(source))
+        {
+            QUrlQuery query;
+            query.addQueryItem(u"urls"_s, QString(source).replace(u'%', u"%25"_s));
+            m_client.command(u"torrents/add"_s, query);
+            m_pendingSources.removeOne(source);
+            QTimer::singleShot(0, this, &Window::processPendingSources);
+            return;
+        }
         auto *dialog = new AddNewTorrentDialog(source, preferences, m_categories, this, file);
         m_pendingSources.removeOne(source);
         m_addDialog=dialog;
+        for (auto *path : dialog->findChildren<FileSystemPathEdit *>())
+            setupPathCompletion(path);
         dialog->setProperty("activationSource",source);
         dialog->setAttribute(Qt::WA_DeleteOnClose);
         connect(dialog,&QDialog::finished,this,[this,source]
         {
             m_forceDialogSources.remove(source);
+            m_skipDialogSources.remove(source);
             m_addDialog=nullptr;
             QTimer::singleShot(0,this,&Window::processPendingSources);
         });
@@ -653,4 +705,190 @@ void Window::refreshDetails()
         m_client.get(u"torrents/pieceStates"_s, query, [apply](const QByteArray &body) { apply(6, body); });
         m_client.get(u"torrents/pieceAvailability"_s, query, [apply](const QByteArray &body) { apply(7, body); });
     }
+}
+
+void Window::setupPathCompletion(FileSystemPathEdit *path)
+{
+    auto *combo = path->findChild<QComboBox *>();
+    if (!combo || !combo->lineEdit()) return;
+    auto *line = combo->lineEdit();
+    auto *completer = new QCompleter(combo);
+    auto *suggestions = new QStringListModel(completer);
+    completer->setModel(suggestions);
+    completer->setCompletionMode(QCompleter::UnfilteredPopupCompletion);
+    combo->setCompleter(completer);
+    auto *timer = new QTimer(combo);
+    timer->setSingleShot(true);
+    timer->setInterval(250);
+    connect(line, &QLineEdit::textEdited, timer, [timer, suggestions, completer]
+    {
+        completer->popup()->hide();
+        suggestions->setStringList({});
+        timer->start();
+    });
+    connect(timer, &QTimer::timeout, combo, [this, line, suggestions, completer]
+    {
+        const auto input = line->text();
+        const auto separator = qMax(input.lastIndexOf(u'/'), input.lastIndexOf(u'\\'));
+        if (separator < 0 || !line->hasFocus()) return;
+        const auto directory = input.left(separator + 1);
+        QUrlQuery query;
+        query.addQueryItem(u"dirPath"_s, QString(directory).replace(u'%', u"%25"_s));
+        query.addQueryItem(u"mode"_s, u"dirs"_s);
+        const QPointer<QLineEdit> guard(line);
+        m_client.probe(u"app/getDirectoryContent"_s, query, false,
+            [guard, input, suggestions, completer](const QByteArray &body)
+        {
+            if (!guard || !guard->hasFocus() || guard->text() != input) return;
+            QStringList matches;
+            for (const auto &entry : QJsonDocument::fromJson(body).array())
+            {
+                auto value = entry.toString();
+                if (input.contains(u'\\'))
+                    value.replace(u'/', u'\\');
+                if (!value.isEmpty() && value.startsWith(input, input.startsWith(u'/')
+                        ? Qt::CaseSensitive : Qt::CaseInsensitive))
+                    matches.append(value);
+            }
+            matches.sort(Qt::CaseInsensitive);
+            suggestions->setStringList(matches);
+            if (!matches.isEmpty())
+            {
+                completer->setCompletionPrefix(input);
+                completer->complete();
+            }
+        });
+    });
+}
+
+bool Window::handleDuplicateSource(const QString &source, bool file, const QJsonObject &preferences, const QJsonObject &metadata)
+{
+    QStringList hashes;
+    QStringList trackers;
+    bool privateSource = false;
+    if (file)
+    {
+        const auto metadata = readTorrentMetadata(source);
+        if (!metadata.valid()) return false;
+        hashes = {metadata.hashV1, metadata.hashV2};
+        trackers = metadata.trackers;
+        privateSource = metadata.isPrivate;
+    }
+    else
+    {
+        const QUrl url(source);
+        if (url.scheme() != u"magnet")
+        {
+            hashes = {metadata[u"infohash_v1"].toString(), metadata[u"infohash_v2"].toString(),
+                metadata[u"hash"].toString()};
+            privateSource = metadata[u"info"].toObject()[u"private"].toBool();
+            for (const auto &tracker : metadata[u"trackers"].toArray())
+                trackers.append(tracker.toObject()[u"url"].toString());
+        }
+        else
+        {
+            const QUrlQuery query(url);
+            for (const auto &topic : query.allQueryItemValues(u"xt"_s, QUrl::FullyDecoded))
+            {
+                if (topic.startsWith(u"urn:btih:", Qt::CaseInsensitive))
+                {
+                    const auto hash = topic.mid(9);
+                    if (hash.size() == 40)
+                        hashes.append(hash);
+                    else if (hash.size() == 32)
+                    {
+                        QByteArray bytes;
+                        unsigned accumulator = 0;
+                        int bits = 0;
+                        for (const auto character : hash.toUpper())
+                        {
+                            const auto value = QStringView(u"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567").indexOf(character);
+                            if (value < 0) break;
+                            accumulator = (accumulator << 5) | unsigned(value);
+                            bits += 5;
+                            if (bits >= 8)
+                            {
+                                bits -= 8;
+                                bytes.append(char((accumulator >> bits) & 0xff));
+                            }
+                        }
+                        if (bytes.size() == 20)
+                            hashes.append(QString::fromLatin1(bytes.toHex()));
+                    }
+                }
+                else if (topic.startsWith(u"urn:btmh:1220", Qt::CaseInsensitive))
+                    hashes.append(topic.mid(13));
+            }
+            trackers = query.allQueryItemValues(u"tr"_s, QUrl::FullyDecoded);
+        }
+    }
+    hashes.removeAll(QString());
+    if (hashes.isEmpty()) return false;
+
+    for (int row = 0; row < m_model.rowCount(); ++row)
+    {
+        const auto torrent = m_model.torrentAt(row);
+        if (!hashes.contains(m_model.hashAt(row), Qt::CaseInsensitive)
+            && !hashes.contains(torrent[u"infohash_v1"].toString(), Qt::CaseInsensitive)
+            && !hashes.contains(torrent[u"infohash_v2"].toString(), Qt::CaseInsensitive))
+            continue;
+        const auto title = tr("Torrent is already present");
+        if (privateSource || torrent[u"private"].toBool())
+        {
+            QMessageBox::warning(this, title, tr("Trackers cannot be merged because it is a private torrent."));
+            return true;
+        }
+        trackers.removeIf([](const QString &tracker)
+        {
+            return tracker.trimmed().isEmpty() || tracker.contains(u'\n') || tracker.contains(u'\r');
+        });
+        trackers.removeDuplicates();
+        if (trackers.isEmpty())
+        {
+            QMessageBox::information(this, title, tr("The new source has no trackers to merge."));
+            return true;
+        }
+        const auto hash = m_model.hashAt(row);
+        const auto connection = m_client.connectionGeneration();
+        const auto answer = QMessageBox::question(this, title,
+            tr("Torrent '%1' is already in the transfer list. Do you want to merge trackers from new source?")
+                .arg(torrent[u"name"].toString()), QMessageBox::Yes | QMessageBox::No,
+            preferences[u"merge_trackers"].toBool() ? QMessageBox::Yes : QMessageBox::No);
+        if (answer == QMessageBox::Yes && m_client.isConnected()
+            && connection == m_client.connectionGeneration())
+        {
+            QUrlQuery query;
+            query.addQueryItem(u"hash"_s, hash);
+            query.addQueryItem(u"urls"_s, trackers.join(u'\n').replace(u'%', u"%25"_s));
+            m_client.command(u"torrents/addTrackers"_s, query);
+        }
+        return true;
+    }
+    return false;
+}
+
+void Window::inspectUrlSource(const QString &source, bool forceDialog, int attempts)
+{
+    QUrlQuery query;
+    // fetchMetadata decodes its source parameter once after form decoding.
+    query.addQueryItem(u"source"_s, QString::fromLatin1(QUrl::toPercentEncoding(source))
+        .replace(u'%', u"%25"_s));
+    const auto connection = m_client.connectionGeneration();
+    m_client.probe(u"torrents/fetchMetadata"_s, query, true,
+        [this, source, forceDialog, attempts, connection](const QByteArray &body)
+    {
+        const auto document = QJsonDocument::fromJson(body);
+        const auto metadata = document.object();
+        if (document.isObject() && !metadata.contains(u"info"_s) && attempts < 4)
+        {
+            QTimer::singleShot(400, this, [this, source, forceDialog, attempts, connection]
+            {
+                if (m_client.isConnected() && m_openingSource && m_pendingSources.value(0) == source
+                    && connection == m_client.connectionGeneration())
+                    inspectUrlSource(source, forceDialog, attempts + 1);
+            });
+            return;
+        }
+        showAddDialog(source, false, forceDialog, metadata);
+    });
 }

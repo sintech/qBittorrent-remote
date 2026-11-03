@@ -47,7 +47,11 @@ void Window::processPendingSources()
         QTimer::singleShot(0,this,&Window::processPendingSources);return;
     }
     m_openingSource=true;
-    showAddDialog(source,file,m_forceDialogSources.contains(source));
+    const bool forceDialog = m_forceDialogSources.contains(source);
+    if (scheme == u"http" || scheme == u"https")
+        inspectUrlSource(source, forceDialog);
+    else
+        showAddDialog(source, file, forceDialog);
 }
 void Window::dragEnterEvent(QDragEnterEvent *event)
 {

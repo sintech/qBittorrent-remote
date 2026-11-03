@@ -75,6 +75,14 @@ Remote::TorrentMetadata Remote::readTorrentMetadata(const QString &path)
         const auto root = parser.read().toMap();
         if (parser.position != parser.data.size() || parser.info.isEmpty()) parser.fail();
         const auto info = root.value(u"info"_s).toMap();
+        result.isPrivate = info.value(u"private"_s).toInt() == 1;
+        const auto tiers = root.value(u"announce-list"_s).toList();
+        for (const auto &tier : tiers)
+        {
+            for (const auto &tracker : tier.toList())
+                result.trackers.append(QString::fromUtf8(tracker.toByteArray()));
+        }
+        result.trackers.append(QString::fromUtf8(root.value(u"announce"_s).toByteArray()));
         result.name = QString::fromUtf8(info.value(u"name.utf-8"_s, info.value(u"name"_s)).toByteArray());
         if (!componentValid(result.name)) parser.fail();
         result.comment = QString::fromUtf8(root.value(u"comment.utf-8"_s, root.value(u"comment"_s)).toByteArray());
