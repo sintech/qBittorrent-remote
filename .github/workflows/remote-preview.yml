@@ -9,7 +9,7 @@ on:
       - 'src/base/**'
       - 'src/lang/**'
       - 'src/icons/**'
-      - 'doc/assets/remote-icon-proposal.svg'
+      - 'doc/assets/remote-icon.svg'
       - '.github/workflows/**'
   workflow_dispatch:
 

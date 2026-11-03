@@ -219,9 +219,6 @@ network replies. They cover protocol requests and asynchronous behavior without
 requiring access to a live server. Live-server verification and native Windows
 verification must be reported separately from these tests.
 
-A proposed R-badge application icon is in `doc/assets/remote-icon-proposal.svg`.
-It is a review proposal only; executable/tray/document icons remain unchanged.
-
 
 ## Search and execution log
 
@@ -300,5 +297,5 @@ unchanged. Name filtering and copying use the decoded title.
 The approved orange R-badge icon is now the Remote application's icon: the Windows
 EXE resource (ID 101), application/dialog/window icon and tray icon use it. The
 original qBittorrent resources are unchanged. The source remains
-`doc/assets/remote-icon-proposal.svg`; `doc/tools/remote-icon` is a small Qt/CMake generator for the
-committed multi-resolution ICO (16–256 px). The document icon (ID 102) is unchanged.
+`doc/assets/remote-icon.svg`. The committed multi-resolution ICO (16–256 px) is
+`src/remote/assets/qbittorrent-remote.ico`. The document icon (ID 102) is unchanged.

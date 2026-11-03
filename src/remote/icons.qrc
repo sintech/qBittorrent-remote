@@ -1,6 +1,6 @@
 <RCC>
     <qresource prefix="/remote-icons">
         <file alias="application.ico">assets/qbittorrent-remote.ico</file>
-        <file alias="application.svg">../../doc/assets/remote-icon-proposal.svg</file>
+        <file alias="application.svg">../../doc/assets/remote-icon.svg</file>
     </qresource>
 </RCC>

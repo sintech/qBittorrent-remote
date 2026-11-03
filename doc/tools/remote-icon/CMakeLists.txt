@@ -1,6 +1,0 @@
-cmake_minimum_required(VERSION 3.16)
-project(RemoteIconGenerator LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 17)
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Svg)
-add_executable(generate-remote-icon main.cpp)
-target_link_libraries(generate-remote-icon PRIVATE Qt6::Core Qt6::Gui Qt6::Svg)

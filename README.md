@@ -1,5 +1,7 @@
 # qBittorrent Remote
 
+<img src="doc/assets/remote-icon.svg" width="96" alt="qBittorrent Remote icon">
+
 qBittorrent Remote is a native desktop client for a standard qBittorrent server. It connects to the server through the built-in Web UI API at `/api/v2/`. An unmodified installation of qBittorrent or `qbittorrent-nox` with Web UI enabled is sufficient. The server handles torrent transfers, search plugins, and logs.
 
 ## Server compatibility
