@@ -1,8 +1,8 @@
 # API-only target: canonical upstream widgets plus remote data/command adapters.
 # Deliberately does not link qbt_base or instantiate a local BitTorrent session.
 cmake_minimum_required(VERSION 3.16)
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION")
-file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" QBT_REMOTE_VERSION LIMIT_COUNT 1)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION.txt")
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION.txt" QBT_REMOTE_VERSION LIMIT_COUNT 1)
 project(qBittorrentRemote VERSION ${QBT_REMOTE_VERSION} LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
